@@ -70,16 +70,7 @@
                 let-exp)
     (expression ( "(" expression (arbno expression) ")")
                 app-exp)
-    
-    ; características adicionales
-    (expression ("false") false-exp)
-    (expression ("true") true-exp)
-    (expression ("proc" "(" (separated-list optional-type-exp identifier ",") ")" expression)
-                proc-exp)
-    (expression ("letrec" (arbno optional-type-exp identifier
-                                 "(" (separated-list optional-type-exp identifier ",") ")"
-                                 "=" expression) "in" expression) 
-                letrec-exp)
+   
     ;;;;;;
 
     (primitive ("+") add-prim)
@@ -251,6 +242,17 @@
       (zero-test-prim () (zero? (car args)))
       (menor-prim () (< (car args) (cadr args)))
       (mayor-prim () (> (car args) (cadr args)))
+
+      (crear-lista-prim () (crear-lista-mathflow (car args) (cadr args)))
+      (vacioq-prim () (vacio-mathflow? (car args)))
+      (listaq-prim () (lista-mathflow? (car args)))
+
+
+      (cabeza-prim () (cabeza-mathflow (car args)))
+      (cola-prim () (cola-mathflow (car args)))
+      (ref-list-prim () (ref-list-mathflow (car args) (cadr args)))
+      (append-prim () (append-mathflow (car args) (cadr args)))
+      (set-list-prim () (set-list-mathflow (car args) (cadr args) (caddr args)))
      )
     )
   )
@@ -258,6 +260,80 @@
 (define true-value?
   (lambda (x)
     (not (zero? x))))
+
+;***********************************************************************************************************************
+;*******************************************  Punto 4 — Adendo Listas  **************************************************
+;***********************************************************************************************************************
+;; Representación interna elegida: una lista MathFlow es un par de Racket
+;; (cons), y `vacio` es la lista vacía nativa '(). Esto corresponde
+;; exactamente con la nota semántica del enunciado:
+;;   crear-lista(x, xs) ≡ (x.xs)
+
+;; -----------------------------------------------------------------------
+;; secciones 4.0.1 a 4.0.4 del enunciado
+;; -----------------------------------------------------------------------
+
+(define vacio-mathflow '())
+
+(define crear-lista-mathflow
+  (lambda (elem lst) (cons elem lst)))
+
+(define vacio-mathflow?
+  (lambda (lst) (null? lst)))
+
+(define lista-mathflow?
+  (lambda (x) (or (null? x) (pair? x))))
+
+;; -----------------------------------------------------------------------
+;; secciones 4.0.6 y 4.0.8 del enunciado
+;; -----------------------------------------------------------------------
+
+(define cabeza-mathflow
+  (lambda (lst)
+    (if (vacio-mathflow? lst)
+        (eopl:error 'cabeza "No se puede obtener la cabeza de una lista vacia")
+        (car lst))))
+
+(define cola-mathflow
+  (lambda (lst)
+    (if (vacio-mathflow? lst)
+        (eopl:error 'cola "No se puede obtener la cola de una lista vacia")
+        (cdr lst))))
+
+;;NOTA PARA MANUELAAA!!!!!!
+;; ref-list-mathflow devuelve vacio-mathflow como "no encontrado" cuando el
+;; índice está fuera de rango. unificar esto con el
+;; valor `null` propio de la sección 2.1 cuando esté definido.
+(define ref-list-mathflow
+  (lambda (lst i)
+    (cond
+      ((vacio-mathflow? lst) vacio-mathflow)
+      ((zero? i) (cabeza-mathflow lst))
+      (else (ref-list-mathflow (cola-mathflow lst) (sub1 i))))))
+
+
+(define append-mathflow
+  (lambda (lst1 lst2)
+    (if (vacio-mathflow? lst1)
+        lst2
+        (crear-lista-mathflow
+         (cabeza-mathflow lst1)
+         (append-mathflow (cola-mathflow lst1) lst2)))))
+
+(define set-list-mathflow
+  (lambda (lst i valor)
+    (cond
+      ((vacio-mathflow? lst)
+       (eopl:error 'set-list "Indice fuera de rango"))
+      ((zero? i)
+       (crear-lista-mathflow valor (cola-mathflow lst)))
+      (else
+       (crear-lista-mathflow
+        (cabeza-mathflow lst)
+        (set-list-mathflow (cola-mathflow lst) (sub1 i) valor))))))
+
+;***********************************************************************************************************************
+;***********************************************************************************************************************
 
 ;***********************************************************************************************************************
 ;*********************************************   Definición tipos     **************************************************
@@ -317,7 +393,7 @@
                   (type-of-letrec-exp result-texps proc-names texpss idss bodies
                                       letrec-body tenv)))))
 
-(define check-equal-type!         ;;; NUEVO      
+(define check-equal-type!            
   (lambda (t1 t2 exp)
     (cond
       ((eqv? t1 t2)  )  
