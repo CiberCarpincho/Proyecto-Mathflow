@@ -332,6 +332,30 @@
         (cabeza-mathflow lst)
         (set-list-mathflow (cola-mathflow lst) (sub1 i) valor))))))
 
+
+(define lista-mathflow->string
+  (lambda (lst)
+    (string-append "[" (lista-elems->string lst) "]")))
+
+(define lista-elems->string
+  (lambda (lst)
+    (cond
+      ((vacio-mathflow? lst) "")
+      ((vacio-mathflow? (cola-mathflow lst)) (valor-mathflow->string (cabeza-mathflow lst)))
+      (else (string-append
+             (valor-mathflow->string (cabeza-mathflow lst))
+             ", "
+             (lista-elems->string (cola-mathflow lst)))))))
+
+(define valor-mathflow->string
+  (lambda (v)
+    (cond
+      ((lista-mathflow? v) (lista-mathflow->string v))
+      ((string? v) v)
+      ((boolean? v) (if v "true" "false"))
+      ((number? v) (number->string v))
+      (else (format "~a" v))))
+
 ;***********************************************************************************************************************
 ;***********************************************************************************************************************
 
