@@ -375,12 +375,26 @@
         'null
         (let* ((exp-actual (car exps))
                (resto (cdr exps))
-               (resultado (eval-expression-con-env exp-actual env)))
-          (if (null? resto)
-              (resultado-eval-valor resultado)
-              (eval-begin-expressions
-               resto
-               (resultado-eval-env resultado)))))))
+               (resultado
+                (eval-expression-con-env exp-actual env))
+               (valor
+                (resultado-eval-valor resultado)))
+
+          (cond
+            ;; Si encontramos return, dejamos de evaluar
+            ;; inmediatamente y propagamos la señal.
+            ((resultado-return? valor)
+             valor)
+
+            ;; Si era la última expresión, devolvemos su valor.
+            ((null? resto)
+             valor)
+
+            ;; Si no, continuamos con el ambiente actualizado.
+            (else
+             (eval-begin-expressions
+              resto
+              (resultado-eval-env resultado))))))))
 
 (define eval-switch-cases
   (lambda (valor casos default-exp env)
@@ -424,12 +438,22 @@
 (define eval-while-con-env
   (lambda (test-exp body-exp env)
     (if (true-value? (eval-expression test-exp env))
-        (let ((resultado
-               (eval-expression-con-env body-exp env)))
-          (eval-while-con-env
-           test-exp
-           body-exp
-           (resultado-eval-env resultado)))
+        (let* ((resultado
+                (eval-expression-con-env body-exp env))
+               (valor
+                (resultado-eval-valor resultado)))
+
+          (if (resultado-return? valor)
+
+              ;; Detenemos el while y propagamos el return.
+              resultado
+
+              ;; Si no hubo return, continuamos.
+              (eval-while-con-env
+               test-exp
+               body-exp
+               (resultado-eval-env resultado))))
+
         (crear-resultado-eval 'null env))))
 
 (define eval-while
@@ -528,17 +552,31 @@
 ;; representación de ambientes (no exigida por el enunciado a resolver).
 (define eval-for-con-env
   (lambda (id elementos body-exp env)
-    (if (null? elementos)
+    (if (vacio-mathflow? elementos)
         (crear-resultado-eval 'null env)
         (let* ((env-iteracion
-                (extend-env (list id) (list (car elementos)) env))
+                (extend-env
+                 (list id)
+                 (list (cabeza-mathflow elementos))
+                 env))
                (resultado
-                (eval-expression-con-env body-exp env-iteracion)))
-          (eval-for-con-env
-           id
-           (cdr elementos)
-           body-exp
-           (resultado-eval-env resultado))))))
+                (eval-expression-con-env
+                 body-exp
+                 env-iteracion))
+               (valor
+                (resultado-eval-valor resultado)))
+
+          (if (resultado-return? valor)
+
+              ;; Detenemos el for y propagamos el return.
+              resultado
+
+              ;; Si no hubo return, continuamos.
+              (eval-for-con-env
+               id
+               (cola-mathflow elementos)
+               body-exp
+               (resultado-eval-env resultado)))))))
 
 (define eval-for
   (lambda (id elementos body-exp env)
@@ -601,8 +639,10 @@
                (let ((elementos
                       (eval-expression iterable-exp env)))
                  (eval-for id elementos body-exp env)))
+      
       (return-exp (value-exp)
-        (eval-expression value-exp env))
+        (valor-return
+         (eval-expression value-exp env)))
 
       (func-exp (nombre ids body-exps)
         (eopl:error 'eval-expression
@@ -1403,19 +1443,29 @@
    (body expression?)
    (env environment?)))
 
+(define-datatype resultado-return resultado-return?
+  (valor-return
+   (valor (lambda (x) #t))))
+
 (define apply-procedure
   (lambda (proc args)
     (cases procval proc
       (closure (ids body env)
-        (eval-expression
-         body
-         (extend-env
-          ids
-          (map
-           (lambda (arg)
-             (crear-binding-mathflow arg 'var))
-           args)
-          env))))))
+        (let ((resultado
+               (eval-expression
+                body
+                (extend-env
+                 ids
+                 (map
+                  (lambda (arg)
+                    (crear-binding-mathflow arg 'var))
+                  args)
+                 env))))
+          (if (resultado-return? resultado)
+              (cases resultado-return resultado
+                (valor-return (valor)
+                  valor))
+              resultado))))))
 
 ;***********************************************************************************************************************
 ;***********************************************     Ambientes     *****************************************************
