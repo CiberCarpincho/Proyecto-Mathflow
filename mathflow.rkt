@@ -116,9 +116,7 @@
     (expression
      ("func" identifier
              "(" (separated-list identifier ",") ")"
-             "{"
-             (separated-list expression ";")
-             "}")
+             "{" expression "}")
      func-exp)
 
     (caso-switch
@@ -151,7 +149,7 @@
 
     
     (expression
-     ("begin" (separated-list expression ";") "end")
+     ("begin" (arbno expression ";") "end")
      begin-exp)
    
     ;;;;;;
@@ -241,6 +239,8 @@
 
 (define scan&parse
   (sllgen:make-string-parser scanner-spec-simple-interpreter grammar-simple-interpreter))
+
+(provide scan&parse eval-program)
 
 (define just-scan
   (sllgen:make-string-scanner scanner-spec-simple-interpreter grammar-simple-interpreter))
@@ -368,82 +368,16 @@
 
 (define eval-begin-expressions
   (lambda (exps env)
-    (let ((exp-actual (car exps))
-          (resto (cdr exps)))
-      (cases expression exp-actual
-
-        (var-exp-definition (decls)
-          (let ((nuevo-env
-                 (eval-declaraciones decls 'var env)))
-            (if (null? resto)
-                'null
-                (eval-begin-expressions resto nuevo-env))))
-        
-        (const-exp-definition (decls)
-          (let ((nuevo-env
-                 (eval-declaraciones decls 'const env)))
-            (if (null? resto)
-                'null
-                (eval-begin-expressions resto nuevo-env))))
-        (func-exp (nombre ids body-exps)
-<<<<<<< HEAD
-          (let ((nuevo-env
-                 (extend-env-recursively
-                  (list nombre)
-                  (list ids)
-                  (list (begin-exp body-exps))
-                  env)))
-            (if (null? resto)
-                'null
-                (eval-begin-expressions resto nuevo-env))))
-||||||| parent of 7c43268 (Add and update grammar constructs including switch, while, for, and func)
-=======
-          ;; FIX recursión: antes se creaba (closure ids body env) y LUEGO se
-          ;; extendía el env con ese binding — pero el closure ya había
-          ;; capturado el env viejo, así que la función no podía verse a sí
-          ;; misma (factorial(n-1) fallaba con "no binding for factorial").
-          ;; extend-env-recursively (heredado del base, usado ahí para
-          ;; letrec) resuelve exactamente esto: apply-env construye la
-          ;; clausura "al vuelo" usando el propio ambiente recursivo como
-          ;; ambiente empaquetado, cerrando el ciclo de auto-referencia.
-          (let ((nuevo-env
-                 (extend-env-recursively
-                  (list nombre)
-                  (list ids)
-                  (list (begin-exp body-exps))
-                  env)))
-            (if (null? resto)
-                'null
-                (eval-begin-expressions resto nuevo-env))))
-        
-        
-        (identifier-exp (id tail)
-          (cases identifier-tail tail
-
-            (lectura-id-tail ()
-              (let ((valor (eval-expression exp-actual env)))
-                (if (null? resto)
-                    valor
-                    (eval-begin-expressions resto env))))
-
-            (asignacion-id-tail (value-exp)
-              (let ((nuevo-valor (eval-expression value-exp env)))
-                (let ((nuevo-env
-                       (actualizar-binding-mathflow
-                        id
-                        nuevo-valor
-                        env)))
-                  (if (null? resto)
-                      nuevo-valor
-                      (eval-begin-expressions
-                       resto
-                       nuevo-env)))))))
-
-        (else
-          (let ((valor (eval-expression exp-actual env)))
-            (if (null? resto)
-                valor
-                (eval-begin-expressions resto env))))))))
+    (if (null? exps)
+        'null
+        (let* ((exp-actual (car exps))
+               (resto (cdr exps))
+               (resultado (eval-expression-con-env exp-actual env)))
+          (if (null? resto)
+              (resultado-eval-valor resultado)
+              (eval-begin-expressions
+               resto
+               (resultado-eval-env resultado)))))))
 
 (define eval-switch-cases
   (lambda (valor casos default-exp env)
@@ -461,70 +395,6 @@
                  default-exp
                  env)))))))
 
-<<<<<<< HEAD
-(define eval-while
-  (lambda (test-exp body-exp env)
-    (resultado-eval-valor (eval-while-con-env test-exp body-exp env))))
-
-(define eval-begin-con-env
-  (lambda (exps env)
-    (if (null? exps)
-        (crear-resultado-eval 'null env)
-        (let ((resultado
-               (eval-expression-con-env (car exps) env)))
-          (if (null? (cdr exps))
-              resultado
-              (eval-begin-con-env
-               (cdr exps)
-               (resultado-eval-env resultado)))))))
-
-(define eval-expression-con-env
-  (lambda (exp env)
-    (cases expression exp
-
-      (begin-exp (exps)
-        (eval-begin-con-env exps env))
-
-      (identifier-exp (id tail)
-        (cases identifier-tail tail
-
-          (asignacion-id-tail (value-exp)
-            (let ((nuevo-valor
-                   (eval-expression value-exp env)))
-              (crear-resultado-eval
-               nuevo-valor
-               (actualizar-binding-mathflow
-                id
-                nuevo-valor
-                env))))
-
-          (lectura-id-tail ()
-            (crear-resultado-eval
-             (eval-expression exp env)
-             env))))
-
-      (else
-        (crear-resultado-eval
-         (eval-expression exp env)
-         env)))))
-
-(define eval-for
-  (lambda (id elementos body-exp env)
-    (if (null? elementos)
-        'null
-        (let ((env-iteracion
-               (extend-env
-                (list id)
-                (list (car elementos))
-                env)))
-          (eval-expression body-exp env-iteracion)
-          (eval-for
-           id
-           (cdr elementos)
-           body-exp
-           env)))))
-||||||| parent of 7c43268 (Add and update grammar constructs including switch, while, for, and func)
-=======
 ;; Variante que propaga el ambiente (misma razón que eval-while-con-env):
 ;; una asignación dentro de un case debe verse después del switch.
 (define eval-switch-cases-con-env
@@ -670,7 +540,6 @@
 (define eval-for
   (lambda (id elementos body-exp env)
     (resultado-eval-valor (eval-for-con-env id elementos body-exp env))))
->>>>>>> 7c43268 (Add and update grammar constructs including switch, while, for, and func)
 
 (define eval-expression
   (lambda (exp env)
@@ -1424,6 +1293,30 @@
       (set-list-prim ()
                      (eopl:error 'type-of-primitive
               "La primitiva set-list no usa el sistema de tipos heredado"))
+
+      (crear-diccionario-prim ()
+        (eopl:error 'type-of-primitive
+                    "La primitiva crear-diccionario no usa el sistema de tipos heredado"))
+
+      (diccionarioq-prim ()
+        (eopl:error 'type-of-primitive
+                    "La primitiva diccionario? no usa el sistema de tipos heredado"))
+
+      (ref-diccionario-prim ()
+        (eopl:error 'type-of-primitive
+                    "La primitiva ref-diccionario no usa el sistema de tipos heredado"))
+
+      (set-diccionario-prim ()
+        (eopl:error 'type-of-primitive
+                    "La primitiva set-diccionario no usa el sistema de tipos heredado"))
+
+      (claves-prim ()
+        (eopl:error 'type-of-primitive
+                    "La primitiva claves no usa el sistema de tipos heredado"))
+
+      (valores-prim ()
+        (eopl:error 'type-of-primitive
+                    "La primitiva valores no usa el sistema de tipos heredado"))
       )))
 
 (define types-of-expressions
@@ -1710,7 +1603,6 @@ scan&parse
 ;; NOTA: para ejecutar de a una estas pruebas en DrRacket, seleccioná la
 ;; expresión y usá "Run" o evaluá en el REPL — no hace falta correrlas
 ;; todas juntas.
-#|
 (eval-program (scan&parse
   "begin
      var { d = (crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34)) };
@@ -1735,7 +1627,6 @@ scan&parse
    end"))
 ;; Esperado: ["id", "nombre", "diagnostico"]
 ;;           [101, "Carlos", "Hipertension"]
-|#
 
 ;***************************************************  Pruebas punto 6   *****************************************************
 ;; Casos de control de la sección 6, incluyendo los dos que antes
