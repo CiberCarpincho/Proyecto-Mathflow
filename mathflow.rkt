@@ -123,12 +123,8 @@
     (expression ("false") false-exp)
     (expression ("true") true-exp)
     (expression ("vacio") vacio-exp)
-    (expression ("proc" "(" (separated-list optional-type-exp identifier ",") ")" expression)
-                proc-exp)
-    (expression ("letrec" (arbno optional-type-exp identifier
-                                 "(" (separated-list optional-type-exp identifier ",") ")"
-                                 "=" expression) "in" expression) 
-                letrec-exp)
+   
+ 
     ;;;;;;
 
     ))
@@ -206,6 +202,8 @@
                       (empty-env)))
      (empty-env))))
 
+(define vacio-mathflow '())
+
 (define eval-expression
   (lambda (exp env)
     (cases expression exp
@@ -260,6 +258,37 @@
       (zero-test-prim () (zero? (car args)))
       (menor-prim () (< (car args) (cadr args)))
       (mayor-prim () (> (car args) (cadr args)))
+      (crear-lista-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva crear-lista pendiente de implementar"))
+
+(vacioq-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva vacio? pendiente de implementar"))
+
+(listaq-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva lista? pendiente de implementar"))
+
+(cabeza-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva cabeza pendiente de implementar"))
+
+(cola-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva cola pendiente de implementar"))
+
+(ref-list-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva ref-list pendiente de implementar"))
+
+(append-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva append pendiente de implementar"))
+
+(set-list-prim ()
+  (eopl:error 'apply-primitive
+              "Primitiva set-list pendiente de implementar"))
      )
     )
   )
@@ -299,6 +328,9 @@
                 bool-type)
       (false-exp ()
                  bool-type)
+      (vacio-exp ()
+  (eopl:error 'type-of-expression
+              "El tipo de vacio esta pendiente de definir"))
       (var-exp (id)
                (apply-tenv tenv id))
       (if-exp (test-exp true-exp false-exp)
@@ -471,6 +503,37 @@
                       (proc-type (list int-type) bool-type))
       (menor-prim () (proc-type (list int-type int-type) bool-type))
       (mayor-prim () (proc-type (list int-type int-type) bool-type))
+      (crear-lista-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de crear-lista pendiente de implementar"))
+
+(vacioq-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de vacio? pendiente de implementar"))
+
+(listaq-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de lista? pendiente de implementar"))
+
+(cabeza-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de cabeza pendiente de implementar"))
+
+(cola-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de cola pendiente de implementar"))
+
+(ref-list-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de ref-list pendiente de implementar"))
+
+(append-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de append pendiente de implementar"))
+
+(set-list-prim ()
+  (eopl:error 'type-of-primitive
+              "Tipo de set-list pendiente de implementar"))
       )))
 
 (define types-of-expressions
@@ -727,4 +790,4 @@
 (show-the-datatypes)
 just-scan
 scan&parse
-(interpretador-tipos)
+;(interpretador-tipos)
