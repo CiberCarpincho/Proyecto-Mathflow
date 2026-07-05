@@ -79,12 +79,15 @@
     (expression
      (primitive "(" (separated-list expression ",")")")
      primapp-exp)
-    (expression ("if" expression "then" expression "else" expression)
-                if-exp)
+    (expression
+     ("if" expression "then" expression "else" expression "end")
+     if-exp)
     (expression ("let" (arbno identifier "=" expression) "in" expression)
                 let-exp)
-    (expression ( "(" expression (arbno expression) ")")
-                app-exp)
+    (expression
+     ("(" expression (arbno expression) ")")
+     app-exp)
+    
     
     (expression
      ("var" "{" declaraciones "}")
@@ -93,6 +96,34 @@
     (expression
      ("const" "{" declaraciones "}")
      const-exp-definition)
+
+    (expression
+     ("switch" expression "{" (arbno caso-switch) "default" ":" expression "}")
+     switch-exp)
+
+    (expression
+     ("while" expression "do" expression "done")
+     while-exp)
+
+    (expression
+     ("for" identifier "in" expression "do" expression "done")
+     for-exp)
+
+    (expression
+     ("return" expression)
+     return-exp)
+
+    (expression
+     ("func" identifier
+             "(" (separated-list identifier ",") ")"
+             "{"
+             (separated-list expression ";")
+             "}")
+     func-exp)
+
+    (caso-switch
+     ("case" expression ":" expression)
+     un-caso-switch)
 
     (declaraciones
      (identifier "=" "(" expression ")" declaraciones-tail)
@@ -117,6 +148,7 @@
     (identifier-tail
      ("=" expression)
      asignacion-id-tail)
+
     
     (expression
      ("begin" (separated-list expression ";") "end")
@@ -286,6 +318,18 @@
                       (empty-env)))
      (empty-env))))
 
+(define crear-resultado-eval
+  (lambda (valor env)
+    (list valor env)))
+
+(define resultado-eval-valor
+  (lambda (resultado)
+    (car resultado)))
+
+(define resultado-eval-env
+  (lambda (resultado)
+    (cadr resultado)))
+
 (define eval-begin
   (lambda (exps env)
     (if (null? exps)
@@ -333,6 +377,19 @@
             (if (null? resto)
                 'null
                 (eval-begin-expressions resto nuevo-env))))
+        (func-exp (nombre ids body-exps)
+          (let ((funcion
+                 (closure ids
+                          (begin-exp body-exps)
+                          env)))
+            (if (null? resto)
+                'null
+                (eval-begin-expressions
+                 resto
+                 (extend-env
+                  (list nombre)
+                  (list funcion)
+                  env)))))
         
         
         (identifier-exp (id tail)
@@ -362,6 +419,91 @@
             (if (null? resto)
                 valor
                 (eval-begin-expressions resto env))))))))
+
+(define eval-switch-cases
+  (lambda (valor casos default-exp env)
+    (if (null? casos)
+        (eval-expression default-exp env)
+        (cases caso-switch (car casos)
+
+          (un-caso-switch (case-exp result-exp)
+            (if (equal? valor
+                        (eval-expression case-exp env))
+                (eval-expression result-exp env)
+                (eval-switch-cases
+                 valor
+                 (cdr casos)
+                 default-exp
+                 env)))))))
+
+(define eval-while
+  (lambda (test-exp body-exp env)
+    (if (true-value? (eval-expression test-exp env))
+        (let ((resultado
+               (eval-expression-con-env body-exp env)))
+          (eval-while
+           test-exp
+           body-exp
+           (resultado-eval-env resultado)))
+        'null)))
+
+(define eval-begin-con-env
+  (lambda (exps env)
+    (if (null? exps)
+        (crear-resultado-eval 'null env)
+        (let ((resultado
+               (eval-expression-con-env (car exps) env)))
+          (if (null? (cdr exps))
+              resultado
+              (eval-begin-con-env
+               (cdr exps)
+               (resultado-eval-env resultado)))))))
+
+(define eval-expression-con-env
+  (lambda (exp env)
+    (cases expression exp
+
+      (begin-exp (exps)
+        (eval-begin-con-env exps env))
+
+      (identifier-exp (id tail)
+        (cases identifier-tail tail
+
+          (asignacion-id-tail (value-exp)
+            (let ((nuevo-valor
+                   (eval-expression value-exp env)))
+              (crear-resultado-eval
+               nuevo-valor
+               (actualizar-binding-mathflow
+                id
+                nuevo-valor
+                env))))
+
+          (lectura-id-tail ()
+            (crear-resultado-eval
+             (eval-expression exp env)
+             env))))
+
+      (else
+        (crear-resultado-eval
+         (eval-expression exp env)
+         env)))))
+
+(define eval-for
+  (lambda (id elementos body-exp env)
+    (if (null? elementos)
+        'null
+        (let ((env-iteracion
+               (extend-env
+                (list id)
+                (list (car elementos))
+                env)))
+          (eval-expression body-exp env-iteracion)
+          (eval-for
+           id
+           (cdr elementos)
+           body-exp
+           env)))))
 
 (define eval-expression
   (lambda (exp env)
@@ -404,6 +546,28 @@
               (if (true-value? (eval-expression test-exp env))
                   (eval-expression true-exp env)
                   (eval-expression false-exp env)))
+      (switch-exp (value-exp cases default-exp)
+                  (let ((valor
+                         (eval-expression value-exp env)))
+                    (eval-switch-cases
+                     valor
+                     cases
+                     default-exp
+                     env)))
+
+      (while-exp (test-exp body-exp)
+        (eval-while test-exp body-exp env))
+
+      (for-exp (id iterable-exp body-exp)
+               (let ((elementos
+                      (eval-expression iterable-exp env)))
+                 (eval-for id elementos body-exp env)))
+      (return-exp (value-exp)
+        (eval-expression value-exp env))
+
+      (func-exp (nombre ids body-exps)
+        (eopl:error 'eval-expression
+              "La definicion func debe evaluarse dentro de begin"))
       
       (let-exp (ids rands body)
                (let ((args (eval-rands rands env)))
@@ -699,6 +863,24 @@
                 (check-equal-type! test-type bool-type test-exp)
                 (check-equal-type! true-type false-type exp)
                 true-type))
+
+      (switch-exp (value-exp cases default-exp)
+        (eopl:error 'type-of-expression
+              "switch no usa el sistema de tipos heredado"))
+
+      (while-exp (test-exp body-exp)
+        (eopl:error 'type-of-expression
+              "while no usa el sistema de tipos heredado"))
+
+      (for-exp (id iterable-exp body-exp)
+        (eopl:error 'type-of-expression
+              "for no usa el sistema de tipos heredado"))
+      (return-exp (value-exp)
+        (eopl:error 'type-of-expression
+              "return no usa el sistema de tipos heredado"))
+      (func-exp (nombre ids body-exps)
+        (eopl:error 'type-of-expression
+              "func no usa el sistema de tipos heredado"))
       (proc-exp (texps ids body)
                 (type-of-proc-exp texps ids body tenv))
       (primapp-exp (prim rands)
