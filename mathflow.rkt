@@ -62,7 +62,11 @@
      (digit (arbno digit) "." digit (arbno digit)) number)
 
     (number
-     ("-" digit (arbno digit) "." digit (arbno digit)) number)))
+     ("-" digit (arbno digit) "." digit (arbno digit)) number)
+    
+    (string
+     ("\"" (arbno (not #\")) "\"")
+     string)))
 
 
 
@@ -71,6 +75,7 @@
 (define grammar-simple-interpreter
   '((program (expression) a-program)
     (expression (number) lit-exp)
+    (expression (string) string-exp)
     (expression (identifier) var-exp)
     (expression
      (primitive "(" (separated-list expression ",")")")
@@ -81,6 +86,20 @@
                 let-exp)
     (expression ( "(" expression (arbno expression) ")")
                 app-exp)
+    (expression
+     ("var" identifier "=" expression)
+     var-exp-definition)
+
+    (expression
+     ("const" identifier "=" expression)
+     const-exp-definition)
+
+    (expression
+     ("set" identifier "=" expression)
+     assign-exp)
+    (expression
+     ("begin" (separated-list expression ";") "end")
+     begin-exp)
    
     ;;;;;;
 
@@ -199,12 +218,66 @@
      (list 4 2 5 (closure '(y) (primapp-exp (mult-prim) (cons (var-exp 'y) (cons (primapp-exp (decr-prim) (cons (var-exp 'y) '())) '())))
                       (empty-env)))
      (empty-env))))
+(define eval-begin
+  (lambda (exps env)
+    (if (null? exps)
+        'null
+        (eval-begin-expressions exps env))))
+
+(define eval-begin-expressions
+  (lambda (exps env)
+    (let ((exp-actual (car exps))
+          (resto (cdr exps)))
+      (cases expression exp-actual
+
+        (var-exp-definition (id value-exp)
+          (let ((valor (eval-expression value-exp env)))
+            (if (null? resto)
+                valor
+                (eval-begin-expressions
+                 resto
+                 (extend-env
+                  (list id)
+                  (list valor)
+                  env)))))
+        (const-exp-definition (id value-exp)
+          (let ((valor (eval-expression value-exp env)))
+            (if (null? resto)
+                valor
+                (eval-begin-expressions
+                 resto
+                 (extend-env
+                  (list id)
+                  (list valor)
+                  env)))))
+
+        (else
+          (let ((valor (eval-expression exp-actual env)))
+            (if (null? resto)
+                valor
+                (eval-begin-expressions resto env))))))))
 
 (define eval-expression
   (lambda (exp env)
     (cases expression exp
       (lit-exp (datum) datum)
+      (string-exp (text)
+  (substring text 1 (- (string-length text) 1)))
       (var-exp (id) (apply-env env id))
+      (var-exp-definition (id value-exp)
+                          (eopl:error 'eval-expression
+                                      "Semantica de var pendiente de implementar"))
+
+      (const-exp-definition (id value-exp)
+                            (eopl:error 'eval-expression
+                                        "Semantica de const pendiente de implementar"))
+
+      (assign-exp (id value-exp)
+                  (eopl:error 'eval-expression
+                              "Semantica de asignacion pendiente de implementar"))
+      (begin-exp (exps)
+                 (eval-begin exps env))
+      
       (primapp-exp (prim rands)
                    (let ((args (eval-rands rands env)))
                      (apply-primitive prim args)))
@@ -325,7 +398,7 @@
 (define ref-list-mathflow
   (lambda (lst i)
     (cond
-      ((vacio-mathflow? lst) vacio-mathflow)
+      ((vacio-mathflow? lst) 'null)
       ((zero? i) (cabeza-mathflow lst))
       (else
        (ref-list-mathflow
@@ -415,6 +488,9 @@
     (cases expression exp
       (lit-exp (number)
                int-type)
+      (string-exp (text)
+                  (eopl:error 'type-of-expression
+                              "Las cadenas no usan el sistema de tipos heredado"))
 
       (true-exp ()
                 bool-type)
@@ -432,6 +508,21 @@
 
       (var-exp (id)
                (apply-tenv tenv id))
+      (var-exp-definition (id value-exp)
+                          (eopl:error 'type-of-expression
+                                      "var no usa el sistema de tipos heredado"))
+
+      (const-exp-definition (id value-exp)
+                            (eopl:error 'type-of-expression
+                                        "const no usa el sistema de tipos heredado"))
+
+      (assign-exp (id value-exp)
+                  (eopl:error 'type-of-expression
+                              "La asignacion no usa el sistema de tipos heredado"))
+      (begin-exp (exps)
+                 (eopl:error 'type-of-expression
+                             "begin no usa el sistema de tipos heredado"))
+      
       (if-exp (test-exp true-exp false-exp)
               (let ((test-type (type-of-expression test-exp tenv))
                     (false-type (type-of-expression false-exp tenv))
