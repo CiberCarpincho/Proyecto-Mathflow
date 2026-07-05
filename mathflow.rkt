@@ -187,6 +187,14 @@
     (primitive ("append") append-prim)
     (primitive ("set-list") set-list-prim)
 
+    ;; Punto 5 — Adendo Diccionarios
+    (primitive ("crear-diccionario") crear-diccionario-prim)
+    (primitive ("diccionario?") diccionarioq-prim)
+    (primitive ("ref-diccionario") ref-diccionario-prim)
+    (primitive ("set-diccionario") set-diccionario-prim)
+    (primitive ("claves") claves-prim)
+    (primitive ("valores") valores-prim)
+
     (type-exp ("int") int-type-exp)
     (type-exp ("bool") bool-type-exp)
     (type-exp ("(" (separated-list type-exp "*") "->" type-exp ")")
@@ -378,18 +386,35 @@
                 'null
                 (eval-begin-expressions resto nuevo-env))))
         (func-exp (nombre ids body-exps)
-          (let ((funcion
-                 (closure ids
-                          (begin-exp body-exps)
-                          env)))
+<<<<<<< HEAD
+          (let ((nuevo-env
+                 (extend-env-recursively
+                  (list nombre)
+                  (list ids)
+                  (list (begin-exp body-exps))
+                  env)))
             (if (null? resto)
                 'null
-                (eval-begin-expressions
-                 resto
-                 (extend-env
+                (eval-begin-expressions resto nuevo-env))))
+||||||| parent of 7c43268 (Add and update grammar constructs including switch, while, for, and func)
+=======
+          ;; FIX recursión: antes se creaba (closure ids body env) y LUEGO se
+          ;; extendía el env con ese binding — pero el closure ya había
+          ;; capturado el env viejo, así que la función no podía verse a sí
+          ;; misma (factorial(n-1) fallaba con "no binding for factorial").
+          ;; extend-env-recursively (heredado del base, usado ahí para
+          ;; letrec) resuelve exactamente esto: apply-env construye la
+          ;; clausura "al vuelo" usando el propio ambiente recursivo como
+          ;; ambiente empaquetado, cerrando el ciclo de auto-referencia.
+          (let ((nuevo-env
+                 (extend-env-recursively
                   (list nombre)
-                  (list funcion)
-                  env)))))
+                  (list ids)
+                  (list (begin-exp body-exps))
+                  env)))
+            (if (null? resto)
+                'null
+                (eval-begin-expressions resto nuevo-env))))
         
         
         (identifier-exp (id tail)
@@ -436,16 +461,10 @@
                  default-exp
                  env)))))))
 
+<<<<<<< HEAD
 (define eval-while
   (lambda (test-exp body-exp env)
-    (if (true-value? (eval-expression test-exp env))
-        (let ((resultado
-               (eval-expression-con-env body-exp env)))
-          (eval-while
-           test-exp
-           body-exp
-           (resultado-eval-env resultado)))
-        'null)))
+    (resultado-eval-valor (eval-while-con-env test-exp body-exp env))))
 
 (define eval-begin-con-env
   (lambda (exps env)
@@ -504,6 +523,154 @@
            (cdr elementos)
            body-exp
            env)))))
+||||||| parent of 7c43268 (Add and update grammar constructs including switch, while, for, and func)
+=======
+;; Variante que propaga el ambiente (misma razón que eval-while-con-env):
+;; una asignación dentro de un case debe verse después del switch.
+(define eval-switch-cases-con-env
+  (lambda (valor casos default-exp env)
+    (if (null? casos)
+        (eval-expression-con-env default-exp env)
+        (cases caso-switch (car casos)
+          (un-caso-switch (case-exp result-exp)
+            (if (equal? valor
+                        (eval-expression case-exp env))
+                (eval-expression-con-env result-exp env)
+                (eval-switch-cases-con-env
+                 valor
+                 (cdr casos)
+                 default-exp
+                 env)))))))
+
+;; FIX propagación de mutaciones: antes eval-while devolvía solo 'null al
+;; terminar, así que cualquier mutación hecha dentro del cuerpo (p. ej.
+;; `contador = contador + 1;`) se perdía para el código que viene después
+;; del while. eval-while-con-env sí retorna (valor . ambiente-final);
+;; eval-while sigue existiendo para los contextos donde solo se necesita
+;; el valor (p. ej. dentro de una sub-expresión aritmética).
+(define eval-while-con-env
+  (lambda (test-exp body-exp env)
+    (if (true-value? (eval-expression test-exp env))
+        (let ((resultado
+               (eval-expression-con-env body-exp env)))
+          (eval-while-con-env
+           test-exp
+           body-exp
+           (resultado-eval-env resultado)))
+        (crear-resultado-eval 'null env))))
+
+(define eval-while
+  (lambda (test-exp body-exp env)
+    (resultado-eval-valor (eval-while-con-env test-exp body-exp env))))
+
+(define eval-begin-con-env
+  (lambda (exps env)
+    (if (null? exps)
+        (crear-resultado-eval 'null env)
+        (let ((resultado
+               (eval-expression-con-env (car exps) env)))
+          (if (null? (cdr exps))
+              resultado
+              (eval-begin-con-env
+               (cdr exps)
+               (resultado-eval-env resultado)))))))
+
+(define eval-expression-con-env
+  (lambda (exp env)
+    (cases expression exp
+
+      (begin-exp (exps)
+        (eval-begin-con-env exps env))
+
+      ;; --- Los siguientes casos antes caían en el "else" de abajo, que
+      ;; llama a eval-expression (sin threading de ambiente) y por lo
+      ;; tanto ROMPÍA var/const/func/if/switch/while/for cuando aparecían
+      ;; como sentencias dentro de un begin, o como cuerpo de un
+      ;; while/for/if. Ahora cada uno tiene su propia variante que
+      ;; retorna (valor . ambiente-actualizado). ---
+
+      (var-exp-definition (decls)
+        (crear-resultado-eval 'null (eval-declaraciones decls 'var env)))
+
+      (const-exp-definition (decls)
+        (crear-resultado-eval 'null (eval-declaraciones decls 'const env)))
+
+      (func-exp (nombre ids body-exps)
+        (crear-resultado-eval
+         'null
+         (extend-env-recursively
+          (list nombre)
+          (list ids)
+          (list (begin-exp body-exps))
+          env)))
+
+      (if-exp (test-exp true-exp false-exp)
+        (if (true-value? (eval-expression test-exp env))
+            (eval-expression-con-env true-exp env)
+            (eval-expression-con-env false-exp env)))
+
+      (switch-exp (value-exp casos default-exp)
+        (let ((valor (eval-expression value-exp env)))
+          (eval-switch-cases-con-env valor casos default-exp env)))
+
+      (while-exp (test-exp body-exp)
+        (eval-while-con-env test-exp body-exp env))
+
+      (for-exp (id iterable-exp body-exp)
+        (let ((elementos (eval-expression iterable-exp env)))
+          (eval-for-con-env id elementos body-exp env)))
+
+      (identifier-exp (id tail)
+        (cases identifier-tail tail
+
+          (asignacion-id-tail (value-exp)
+            (let ((nuevo-valor
+                   (eval-expression value-exp env)))
+              (crear-resultado-eval
+               nuevo-valor
+               (actualizar-binding-mathflow
+                id
+                nuevo-valor
+                env))))
+
+          (lectura-id-tail ()
+            (crear-resultado-eval
+             (eval-expression exp env)
+             env))))
+
+      (else
+        (crear-resultado-eval
+         (eval-expression exp env)
+         env)))))
+
+;; FIX acumulación en for: antes cada iteración partía siempre del MISMO
+;; `env` original, así que algo como `suma = suma + i;` dentro del for no
+;; se acumulaba (cada vuelta "olvidaba" lo que hizo la anterior). Ahora se
+;; encadena el ambiente resultante de una iteración hacia la siguiente,
+;; igual que ya se hacía correctamente en eval-while-con-env.
+;; Nota de diseño (documentar en el repo): el identificador del for queda
+;; con una nueva ligadura en cada iteración; si el mismo nombre se usa
+;; después del for para otra variable, verá el último valor de iteración
+;; en vez de su valor previo. Es una limitación conocida de esta
+;; representación de ambientes (no exigida por el enunciado a resolver).
+(define eval-for-con-env
+  (lambda (id elementos body-exp env)
+    (if (null? elementos)
+        (crear-resultado-eval 'null env)
+        (let* ((env-iteracion
+                (extend-env (list id) (list (car elementos)) env))
+               (resultado
+                (eval-expression-con-env body-exp env-iteracion)))
+          (eval-for-con-env
+           id
+           (cdr elementos)
+           body-exp
+           (resultado-eval-env resultado))))))
+
+(define eval-for
+  (lambda (id elementos body-exp env)
+    (resultado-eval-valor (eval-for-con-env id elementos body-exp env))))
+>>>>>>> 7c43268 (Add and update grammar constructs including switch, while, for, and func)
 
 (define eval-expression
   (lambda (exp env)
@@ -651,8 +818,15 @@
         (string-append (car args) (cadr args)))
 
       (print-prim ()
+        ;; FIX: antes hacía (display (car args)) directo — para números,
+        ;; strings y booleanos "colaba" por accidente parecido al
+        ;; formato esperado, pero para listas y (ahora) diccionarios
+        ;; mostraba la representación cruda de Racket en vez de
+        ;; [1, 2, 3] o {"clave": valor}. valor-mathflow->string ya
+        ;; existía para esto (se usaba dentro de lista-mathflow->string)
+        ;; pero nunca se conectó con print.
         (begin
-          (display (car args))
+          (display (valor-mathflow->string (car args)))
           (newline)
           'null))
 
@@ -666,6 +840,17 @@
       (ref-list-prim () (ref-list-mathflow (car args) (cadr args)))
       (append-prim () (append-mathflow (car args) (cadr args)))
       (set-list-prim () (set-list-mathflow (car args) (cadr args) (caddr args)))
+
+      ;; Punto 5 — Adendo Diccionarios
+      ;; crear-diccionario recibe una cantidad variable de argumentos
+      ;; (0, o pares clave,valor,clave,valor,...), por eso usa `args`
+      ;; completo en vez de (car args)/(cadr args) como las demás.
+      (crear-diccionario-prim () (crear-diccionario-mathflow args))
+      (diccionarioq-prim () (diccionario-mathflow? (car args)))
+      (ref-diccionario-prim () (ref-diccionario-mathflow (car args) (cadr args)))
+      (set-diccionario-prim () (set-diccionario-mathflow (car args) (cadr args) (caddr args)))
+      (claves-prim () (claves-diccionario-mathflow (car args)))
+      (valores-prim () (valores-diccionario-mathflow (car args)))
      )
     )
   )
@@ -700,7 +885,11 @@
   (lambda (lst) (null? lst)))
 
 (define lista-mathflow?
-  (lambda (x) (or (null? x) (pair? x))))
+  ;; Un diccionario también es un `pair?` de Racket (está etiquetado como
+  ;; (list 'diccionario-mathflow pares)), así que hay que excluirlo
+  ;; explícitamente para que lista?(diccionario) dé false.
+  (lambda (x) (and (or (null? x) (pair? x))
+                    (not (diccionario-mathflow? x)))))
 
 ;; -----------------------------------------------------------------------
 ;; secciones 4.0.6 y 4.0.8 del enunciado
@@ -774,6 +963,10 @@
 (define valor-mathflow->string
   (lambda (v)
     (cond
+      ((eqv? v 'null)
+       "null")
+      ((diccionario-mathflow? v)
+       (diccionario-mathflow->string v))
       ((lista-mathflow? v)
        (lista-mathflow->string v))
       ((string? v)
@@ -784,6 +977,123 @@
        (number->string v))
       (else
        "valor-no-representable"))))
+
+;***********************************************************************************************************************
+;*****************************************  Punto 5 — Adendo Diccionarios  **********************************************
+;***********************************************************************************************************************
+;; Representación interna elegida: un diccionario MathFlow es una lista de
+;; Racket ETIQUETADA — (list 'diccionario-mathflow (list (clave . valor) ...))
+;; — siguiendo el mismo estilo que ya usaron para `binding-mathflow` más
+;; arriba en el archivo. La etiqueta es necesaria porque, sin ella, un
+;; diccionario vacío `(list)` sería indistinguible de `vacio-mathflow`
+;; (la lista vacía), y diccionario?/lista? necesitan poder diferenciarlos.
+
+(define etiqueta-diccionario-mathflow 'diccionario-mathflow)
+
+;; -----------------------------------------------------------------------
+;; sección 5.0.1 del enunciado — crear-diccionario()
+;; -----------------------------------------------------------------------
+
+(define pares-desde-argumentos-planos
+  ;; Convierte (clave1 valor1 clave2 valor2 ...) en ((clave1 . valor1) ...)
+  (lambda (args)
+    (if (null? args)
+        '()
+        (cons (cons (car args) (cadr args))
+              (pares-desde-argumentos-planos (cddr args))))))
+
+(define crear-diccionario-mathflow
+  (lambda (args-planos)
+    (list etiqueta-diccionario-mathflow
+          (pares-desde-argumentos-planos args-planos))))
+
+(define diccionario-mathflow?
+  (lambda (v)
+    (and (pair? v) (eqv? (car v) etiqueta-diccionario-mathflow))))
+
+(define diccionario-mathflow-pares
+  (lambda (d) (cadr d)))
+
+;; -----------------------------------------------------------------------
+;; sección 5.0.3 del enunciado — ref-diccionario(dic, clave)
+;; -----------------------------------------------------------------------
+
+(define buscar-en-pares-mathflow
+  (lambda (clave pares)
+    (cond
+      ((null? pares) 'null)
+      ((equal? (caar pares) clave) (cdar pares))
+      (else (buscar-en-pares-mathflow clave (cdr pares))))))
+
+(define ref-diccionario-mathflow
+  (lambda (d clave)
+    (buscar-en-pares-mathflow clave (diccionario-mathflow-pares d))))
+
+;; -----------------------------------------------------------------------
+;; sección 5.0.4 del enunciado — set-diccionario(dic, clave, valor)
+;; -----------------------------------------------------------------------
+
+(define set-en-pares-mathflow
+  (lambda (clave valor pares)
+    (cond
+      ((null? pares) (list (cons clave valor)))
+      ((equal? (caar pares) clave) (cons (cons clave valor) (cdr pares)))
+      (else (cons (car pares)
+                  (set-en-pares-mathflow clave valor (cdr pares)))))))
+
+(define set-diccionario-mathflow
+  (lambda (d clave valor)
+    (list etiqueta-diccionario-mathflow
+          (set-en-pares-mathflow clave valor (diccionario-mathflow-pares d)))))
+
+;; -----------------------------------------------------------------------
+;; secciones 5.0.5 y 5.0.6 del enunciado — claves / valores
+;; -----------------------------------------------------------------------
+;; Nota: el resultado es una lista MathFlow. Como una lista MathFlow ya es
+;; literalmente un par/lista de Racket (ver sección de Listas más arriba),
+;; `map car`/`map cdr` sobre los pares produce directamente una lista con
+;; la representación correcta, sin necesidad de convertir nada.
+
+(define claves-diccionario-mathflow
+  (lambda (d) (map car (diccionario-mathflow-pares d))))
+
+(define valores-diccionario-mathflow
+  (lambda (d) (map cdr (diccionario-mathflow-pares d))))
+
+;; -----------------------------------------------------------------------
+;; Representación legible para `print` (análoga a lista-mathflow->string)
+;; -----------------------------------------------------------------------
+
+(define diccionario-mathflow->string
+  (lambda (d)
+    (string-append "{" (pares-diccionario->string (diccionario-mathflow-pares d)) "}")))
+
+(define pares-diccionario->string
+  (lambda (pares)
+    (cond
+      ((null? pares) "")
+      ((null? (cdr pares)) (par-diccionario->string (car pares)))
+      (else (string-append
+             (par-diccionario->string (car pares))
+             ", "
+             (pares-diccionario->string (cdr pares)))))))
+
+(define par-diccionario->string
+  ;; Las claves siempre se muestran entre comillas (son cadenas en los
+  ;; ejemplos del enunciado); los valores usan la misma representación
+  ;; que ya se usa para listas, salvo que las cadenas también se citan
+  ;; aquí para que coincida con el formato mostrado en la sección 5
+  ;; (ej. {"nombre": "Ana María", "edad": 34}).
+  (lambda (p)
+    (string-append
+     "\"" (valor-mathflow->string (car p)) "\": "
+     (valor-diccionario-elemento->string (cdr p)))))
+
+(define valor-diccionario-elemento->string
+  (lambda (v)
+    (if (string? v)
+        (string-append "\"" v "\"")
+        (valor-mathflow->string v))))
 
 ;***********************************************************************************************************************
 ;***********************************************************************************************************************
@@ -1381,3 +1691,114 @@ scan&parse
 (scan&parse "append(crear-lista(1, vacio), crear-lista(2, vacio))")
 (scan&parse "ref-list(crear-lista(1, crear-lista(2, vacio)), 1)")
 (scan&parse "set-list(crear-lista(1, crear-lista(2, vacio)), 1, 99)")
+
+;***************************************************  Pruebas punto 5   *****************************************************
+;; scan&parse de cada primitiva nueva (requisito del enunciado: ejemplos
+;; de cada producción usando scan&parse — sección 1, "Importante").
+(scan&parse "crear-diccionario()")
+(scan&parse "crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34)")
+(scan&parse "diccionario?(crear-diccionario())")
+(scan&parse "ref-diccionario(crear-diccionario(\"nombre\", \"Ana\"), \"nombre\")")
+(scan&parse "set-diccionario(crear-diccionario(\"nombre\", \"Ana\"), \"edad\", 34)")
+(scan&parse "claves(crear-diccionario(\"id\", 101, \"nombre\", \"Carlos\"))")
+(scan&parse "valores(crear-diccionario(\"id\", 101, \"nombre\", \"Carlos\"))")
+
+;; eval-program de los ejemplos exactos del PDF, sección 5:
+;; crear-diccionario, diccionario?, ref-diccionario, set-diccionario,
+;; claves, valores — todos con begin ... end porque son varias
+;; sentencias en secuencia.
+;; NOTA: para ejecutar de a una estas pruebas en DrRacket, seleccioná la
+;; expresión y usá "Run" o evaluá en el REPL — no hace falta correrlas
+;; todas juntas.
+#|
+(eval-program (scan&parse
+  "begin
+     var { d = (crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34)) };
+     print(d);
+   end"))
+;; Esperado: {"nombre": "Ana", "edad": 34}
+
+(eval-program (scan&parse
+  "begin
+     var { d = (crear-diccionario(\"nombre\", \"Ana\")) };
+     d = set-diccionario(d, \"edad\", 34);
+     d = set-diccionario(d, \"nombre\", \"Ana Maria\");
+     print(d);
+   end"))
+;; Esperado: {"nombre": "Ana Maria", "edad": 34}
+
+(eval-program (scan&parse
+  "begin
+     var { pacientes = (crear-diccionario(\"id\", 101, \"nombre\", \"Carlos\", \"diagnostico\", \"Hipertension\")) };
+     print(claves(pacientes));
+     print(valores(pacientes));
+   end"))
+;; Esperado: ["id", "nombre", "diagnostico"]
+;;           [101, "Carlos", "Hipertension"]
+|#
+
+;***************************************************  Pruebas punto 6   *****************************************************
+;; Casos de control de la sección 6, incluyendo los dos que antes
+;; fallaban: recursión en func, y mutaciones dentro de while/for que
+;; deben verse DESPUÉS del bloque.
+;; IMPORTANTE: las primitivas en esta gramática son PREFIJAS —
+;; <=(n, 1), no "n <= 1" — porque así se definieron los tokens de
+;; primitive en grammar-simple-interpreter (primitive "(" args ")").
+#|
+;; 6.0.5/6.0.6 — función simple y factorial recursivo (el ejemplo
+;; central del enunciado: antes de este arreglo, esto lanzaba
+;; "no binding for factorial")
+(eval-program (scan&parse
+  "begin
+     func factorial (n) {
+       if <=(n, 1) then return 1 else return *(n, factorial(-(n, 1))) end
+     };
+     print(factorial(5));
+   end"))
+;; Esperado: 120
+
+(eval-program (scan&parse
+  "begin
+     func fib (n) {
+       if <=(n, 1) then return n else return +(fib(-(n, 1)), fib(-(n, 2))) end
+     };
+     print(fib(6));
+   end"))
+;; Esperado: 8
+
+;; 6.0.3 — while: antes de este arreglo, print imprimía 0 en vez de 5
+;; porque la mutación de `contador` dentro del while se perdía al salir.
+(eval-program (scan&parse
+  "begin
+     var { contador = (0) };
+     while <(contador, 5) do
+       contador = +(contador, 1)
+     done;
+     print(contador);
+   end"))
+;; Esperado: 5
+
+;; 6.0.4 — for: acumulación dentro del for (antes se perdía en cada
+;; vuelta; ahora se encadena).
+(eval-program (scan&parse
+  "begin
+     var { suma = (0) };
+     for n in crear-lista(1, crear-lista(2, crear-lista(3, vacio))) do
+       suma = +(suma, n)
+     done;
+     print(suma);
+   end"))
+;; Esperado: 6
+
+;; 6.0.2 — switch
+(eval-program (scan&parse
+  "begin
+     var { color = (\"rojo\") };
+     switch color {
+       case \"rojo\" : print(\"Detente\")
+       case \"amarillo\" : print(\"Precaucion\")
+       default : print(\"Color desconocido\")
+     };
+   end"))
+;; Esperado: Detente
+|#
