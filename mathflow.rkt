@@ -47,7 +47,7 @@
      (whitespace) skip)
 
     (comment
-     ("%" (arbno (not #\newline))) skip)
+     ("#" (arbno (not #\newline))) skip)
 
     (identifier
      (letter (arbno (or letter digit))) symbol)
@@ -127,10 +127,16 @@
     (primitive ("+") add-prim)
     (primitive ("-") substract-prim)
     (primitive ("*") mult-prim)
+    (primitive ("/") division-prim)
+    (primitive ("%") modulo-prim)
     (primitive ("add1") incr-prim)
     (primitive ("sub1") decr-prim)
     (primitive (">") mayor-prim)
     (primitive ("<") menor-prim)
+    (primitive (">=") mayor-igual-prim)
+    (primitive ("<=") menor-igual-prim)
+    (primitive ("==") igual-prim)
+    (primitive ("<>") diferente-prim)
     ;añadidas:
     (primitive ("zero?") zero-test-prim)
     (primitive ("crear-lista") crear-lista-prim)
@@ -139,6 +145,12 @@
     (primitive ("cabeza") cabeza-prim)
     (primitive ("cola") cola-prim)
     (primitive ("ref-list") ref-list-prim)
+    (primitive ("and") and-prim)
+    (primitive ("or") or-prim)
+    (primitive ("not") not-prim)
+    (primitive ("longitud") longitud-prim)
+    (primitive ("concatenar") concatenar-prim)
+    (primitive ("print") print-prim)
 
     (primitive ("append") append-prim)
     (primitive ("set-list") set-list-prim)
@@ -387,10 +399,12 @@
       (primapp-exp (prim rands)
                    (let ((args (eval-rands rands env)))
                      (apply-primitive prim args)))
+      
       (if-exp (test-exp true-exp false-exp)
-              (if (eval-expression test-exp env)
+              (if (true-value? (eval-expression test-exp env))
                   (eval-expression true-exp env)
                   (eval-expression false-exp env)))
+      
       (let-exp (ids rands body)
                (let ((args (eval-rands rands env)))
                  (eval-expression body
@@ -434,11 +448,49 @@
       (add-prim () (+ (car args) (cadr args)))
       (substract-prim () (- (car args) (cadr args)))
       (mult-prim () (* (car args) (cadr args)))
+      (division-prim ()
+        (/ (car args) (cadr args)))
+      (modulo-prim ()
+        (remainder (car args) (cadr args)))
       (incr-prim () (+ (car args) 1))
       (decr-prim () (- (car args) 1))
       (zero-test-prim () (zero? (car args)))
       (menor-prim () (< (car args) (cadr args)))
       (mayor-prim () (> (car args) (cadr args)))
+      (mayor-igual-prim ()
+        (>= (car args) (cadr args)))
+
+      (menor-igual-prim ()
+        (<= (car args) (cadr args)))
+
+      (igual-prim ()
+        (equal? (car args) (cadr args)))
+
+      (diferente-prim ()
+        (not (equal? (car args) (cadr args))))
+      
+      (and-prim ()
+        (and (true-value? (car args))
+             (true-value? (cadr args))))
+
+      (or-prim ()
+        (or (true-value? (car args))
+            (true-value? (cadr args))))
+
+      (not-prim ()
+        (not (true-value? (car args))))
+
+      (longitud-prim ()
+        (string-length (car args)))
+
+      (concatenar-prim ()
+        (string-append (car args) (cadr args)))
+
+      (print-prim ()
+        (begin
+          (display (car args))
+          (newline)
+          'null))
 
       (crear-lista-prim () (crear-lista-mathflow (car args) (cadr args)))
       (vacioq-prim () (vacio-mathflow? (car args)))
@@ -455,8 +507,13 @@
   )
 
 (define true-value?
-  (lambda (x)
-    (not (zero? x))))
+  (lambda (valor)
+    (cond
+      ((eqv? valor #f) #f)
+      ((and (number? valor) (zero? valor)) #f)
+      ((and (string? valor) (string=? valor "")) #f)
+      ((eqv? valor 'null) #f)
+      (else #t))))
 
 ;***********************************************************************************************************************
 ;*******************************************  Punto 4 — Adendo Listas  **************************************************
@@ -797,6 +854,12 @@
                       (proc-type (list int-type int-type) int-type))
       (mult-prim ()
                  (proc-type (list int-type int-type) int-type))
+      (division-prim ()
+        (proc-type (list int-type int-type) int-type))
+
+      (modulo-prim ()
+        (proc-type (list int-type int-type) int-type))
+      
       (incr-prim ()
                  (proc-type (list int-type) int-type))
       (decr-prim ()
@@ -805,6 +868,39 @@
                       (proc-type (list int-type) bool-type))
       (menor-prim () (proc-type (list int-type int-type) bool-type))
       (mayor-prim () (proc-type (list int-type int-type) bool-type))
+      (mayor-igual-prim ()
+        (proc-type (list int-type int-type) bool-type))
+
+      (menor-igual-prim ()
+        (proc-type (list int-type int-type) bool-type))
+
+      (igual-prim ()
+        (proc-type (list int-type int-type) bool-type))
+
+      (diferente-prim ()
+        (proc-type (list int-type int-type) bool-type))
+
+      (and-prim ()
+        (proc-type (list bool-type bool-type) bool-type))
+
+      (or-prim ()
+        (proc-type (list bool-type bool-type) bool-type))
+
+      (not-prim ()
+        (proc-type (list bool-type) bool-type))
+      
+      (longitud-prim ()
+        (eopl:error 'type-of-primitive
+              "La primitiva longitud no usa el sistema de tipos heredado"))
+
+      (concatenar-prim ()
+        (eopl:error 'type-of-primitive
+              "La primitiva concatenar no usa el sistema de tipos heredado"))
+
+      (print-prim ()
+        (eopl:error 'type-of-primitive
+              "La primitiva print no usa el sistema de tipos heredado"))
+      
       (crear-lista-prim ()
                         (eopl:error 'type-of-primitive
                                     "La primitiva crear-lista no usa el sistema de tipos heredado"))
