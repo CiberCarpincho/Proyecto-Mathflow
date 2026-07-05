@@ -228,7 +228,9 @@
       (true-exp ()
                 #t)
       (false-exp ()
-                 #f))))
+                 #f)
+      (vacio-exp ()
+                 vacio-mathflow))))
 
 (define eval-rands
   (lambda (rands env)
