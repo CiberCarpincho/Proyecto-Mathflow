@@ -116,7 +116,9 @@
     (expression
      ("func" identifier
              "(" (separated-list identifier ",") ")"
-             "{" expression "}")
+             "{"
+             (separated-list expression ";")
+             "}")
      func-exp)
 
     (caso-switch
@@ -149,7 +151,7 @@
 
     
     (expression
-     ("begin" (arbno expression ";") "end")
+     ("begin" (separated-list expression ";") "end")
      begin-exp)
    
     ;;;;;;
@@ -1606,24 +1608,22 @@ scan&parse
 (eval-program (scan&parse
   "begin
      var { d = (crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34)) };
-     print(d);
+     print(d)
    end"))
-;; Esperado: {"nombre": "Ana", "edad": 34}
 
 (eval-program (scan&parse
   "begin
      var { d = (crear-diccionario(\"nombre\", \"Ana\")) };
      d = set-diccionario(d, \"edad\", 34);
      d = set-diccionario(d, \"nombre\", \"Ana Maria\");
-     print(d);
+     print(d)
    end"))
-;; Esperado: {"nombre": "Ana Maria", "edad": 34}
 
 (eval-program (scan&parse
   "begin
      var { pacientes = (crear-diccionario(\"id\", 101, \"nombre\", \"Carlos\", \"diagnostico\", \"Hipertension\")) };
      print(claves(pacientes));
-     print(valores(pacientes));
+     print(valores(pacientes))
    end"))
 ;; Esperado: ["id", "nombre", "diagnostico"]
 ;;           [101, "Carlos", "Hipertension"]
