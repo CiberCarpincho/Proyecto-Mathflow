@@ -354,7 +354,7 @@
       ((string? v) v)
       ((boolean? v) (if v "true" "false"))
       ((number? v) (number->string v))
-      (else (format "~a" v))))
+      (else (format "~a" v)))))
 
 ;***********************************************************************************************************************
 ;***********************************************************************************************************************
@@ -819,3 +819,13 @@
 just-scan
 scan&parse
 (interpretador-tipos)
+;***************************************************  Pruebas punto 4   *****************************************************
+(scan&parse "vacio")
+(scan&parse "crear-lista(3, vacio)")
+(scan&parse "vacio?(vacio)")
+(scan&parse "lista?(crear-lista(1, vacio))")
+(scan&parse "cabeza(crear-lista(1, crear-lista(2, vacio)))")
+(scan&parse "cola(crear-lista(1, crear-lista(2, vacio)))")
+(scan&parse "append(crear-lista(1, vacio), crear-lista(2, vacio))")
+(scan&parse "ref-list(crear-lista(1, crear-lista(2, vacio)), 1)")
+(scan&parse "set-list(crear-lista(1, crear-lista(2, vacio)), 1, 99)")
