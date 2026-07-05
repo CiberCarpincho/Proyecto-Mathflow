@@ -1,5 +1,7 @@
 #lang eopl
 
+
+
 ;; =========================================================================
 ;; Steven Fernando Aragon - 2418804
 ;; Manuela Martinez Moncada - 2375458
@@ -36,7 +38,6 @@
 
 ;***********************************************************************************************************************
 ;***********************************************************************************************************************
-
 
 ;***********************************************************************************************************************
 ;**********************************************    Especificación Léxica   *********************************************
@@ -747,20 +748,26 @@
 ;; secciones 4.0.1 a 4.0.4 del enunciado
 ;; -----------------------------------------------------------------------
 
+;; Una lista MathFlow no vacía es un vector mutable:
+;; #(lista-mathflow elemento resto)
+
 (define vacio-mathflow '())
 
 (define crear-lista-mathflow
-  (lambda (elem lst) (cons elem lst)))
+  (lambda (elem lst)
+    (vector 'lista-mathflow elem lst)))
 
 (define vacio-mathflow?
-  (lambda (lst) (null? lst)))
+  (lambda (lst)
+    (null? lst)))
 
 (define lista-mathflow?
-  ;; Un diccionario también es un `pair?` de Racket (está etiquetado como
-  ;; (list 'diccionario-mathflow pares)), así que hay que excluirlo
-  ;; explícitamente para que lista?(diccionario) dé false.
-  (lambda (x) (and (or (null? x) (pair? x))
-                    (not (diccionario-mathflow? x)))))
+  (lambda (x)
+    (or
+     (vacio-mathflow? x)
+     (and (vector? x)
+          (= (vector-length x) 3)
+          (eqv? (vector-ref x 0) 'lista-mathflow)))))
 
 ;; -----------------------------------------------------------------------
 ;; secciones 4.0.6 y 4.0.8 del enunciado
@@ -769,14 +776,16 @@
 (define cabeza-mathflow
   (lambda (lst)
     (if (vacio-mathflow? lst)
-        (eopl:error 'cabeza "No se puede obtener la cabeza de una lista vacia")
-        (car lst))))
+        (eopl:error 'cabeza
+                    "No se puede obtener la cabeza de una lista vacia")
+        (vector-ref lst 1))))
 
 (define cola-mathflow
   (lambda (lst)
     (if (vacio-mathflow? lst)
-        (eopl:error 'cola "No se puede obtener la cola de una lista vacia")
-        (cdr lst))))
+        (eopl:error 'cola
+                    "No se puede obtener la cola de una lista vacia")
+        (vector-ref lst 2))))
 
 ;;NOTA PARA MANUELAAA!!!!!!
 ;; ref-list-mathflow devuelve vacio-mathflow como "no encontrado" cuando el
@@ -805,16 +814,21 @@
   (lambda (lst i valor)
     (cond
       ((vacio-mathflow? lst)
-       (eopl:error 'set-list "Indice fuera de rango"))
+       (eopl:error 'set-list
+                   "Indice fuera de rango"))
+
       ((zero? i)
-       (crear-lista-mathflow valor (cola-mathflow lst)))
+       (begin
+         (vector-set! lst 1 valor)
+         lst))
+
       (else
-       (crear-lista-mathflow
-        (cabeza-mathflow lst)
-        (set-list-mathflow
-         (cola-mathflow lst)
-         (- i 1)
-         valor))))))
+       (begin
+         (set-list-mathflow
+          (cola-mathflow lst)
+          (- i 1)
+          valor)
+         lst)))))
 
 
 (define lista-mathflow->string
