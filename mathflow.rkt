@@ -64,6 +64,8 @@
     (number
      ("-" digit (arbno digit) "." digit (arbno digit)) number)))
 
+
+
 ;Especificación Sintáctica (gramática)
 
 (define grammar-simple-interpreter
@@ -79,16 +81,7 @@
                 let-exp)
     (expression ( "(" expression (arbno expression) ")")
                 app-exp)
-    
-    ; características adicionales
-    (expression ("false") false-exp)
-    (expression ("true") true-exp)
-    (expression ("proc" "(" (separated-list optional-type-exp identifier ",") ")" expression)
-                proc-exp)
-    (expression ("letrec" (arbno optional-type-exp identifier
-                                 "(" (separated-list optional-type-exp identifier ",") ")"
-                                 "=" expression) "in" expression) 
-                letrec-exp)
+   
     ;;;;;;
 
     (primitive ("+") add-prim)
@@ -120,11 +113,16 @@
       a-type-exp)
 
     ; características adicionales
-    (expression ("false") false-exp)
-    (expression ("true") true-exp)
-    (expression ("vacio") vacio-exp)
-   
- 
+(expression ("false") false-exp)
+(expression ("true") true-exp)
+(expression ("null") null-exp)
+(expression ("vacio") vacio-exp)
+    (expression ("proc" "(" (separated-list optional-type-exp identifier ",") ")" expression)
+                proc-exp)
+    (expression ("letrec" (arbno optional-type-exp identifier
+                                 "(" (separated-list optional-type-exp identifier ",") ")"
+                                 "=" expression) "in" expression) 
+                letrec-exp)
     ;;;;;;
 
     ))
@@ -202,8 +200,6 @@
                       (empty-env)))
      (empty-env))))
 
-(define vacio-mathflow '())
-
 (define eval-expression
   (lambda (exp env)
     (cases expression exp
@@ -232,10 +228,16 @@
       (letrec-exp (result-texps proc-names arg-texpss idss bodies letrec-body)
                   (eval-expression letrec-body
                                    (extend-env-recursively proc-names idss bodies env)))
+      
       (true-exp ()
                 #t)
+
       (false-exp ()
                  #f)
+
+      (null-exp ()
+                'null)
+
       (vacio-exp ()
                  vacio-mathflow))))
 
@@ -258,37 +260,17 @@
       (zero-test-prim () (zero? (car args)))
       (menor-prim () (< (car args) (cadr args)))
       (mayor-prim () (> (car args) (cadr args)))
-      (crear-lista-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva crear-lista pendiente de implementar"))
 
-(vacioq-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva vacio? pendiente de implementar"))
+      (crear-lista-prim () (crear-lista-mathflow (car args) (cadr args)))
+      (vacioq-prim () (vacio-mathflow? (car args)))
+      (listaq-prim () (lista-mathflow? (car args)))
 
-(listaq-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva lista? pendiente de implementar"))
 
-(cabeza-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva cabeza pendiente de implementar"))
-
-(cola-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva cola pendiente de implementar"))
-
-(ref-list-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva ref-list pendiente de implementar"))
-
-(append-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva append pendiente de implementar"))
-
-(set-list-prim ()
-  (eopl:error 'apply-primitive
-              "Primitiva set-list pendiente de implementar"))
+      (cabeza-prim () (cabeza-mathflow (car args)))
+      (cola-prim () (cola-mathflow (car args)))
+      (ref-list-prim () (ref-list-mathflow (car args) (cadr args)))
+      (append-prim () (append-mathflow (car args) (cadr args)))
+      (set-list-prim () (set-list-mathflow (car args) (cadr args) (caddr args)))
      )
     )
   )
@@ -296,6 +278,115 @@
 (define true-value?
   (lambda (x)
     (not (zero? x))))
+
+;***********************************************************************************************************************
+;*******************************************  Punto 4 — Adendo Listas  **************************************************
+;***********************************************************************************************************************
+;; Representación interna elegida: una lista MathFlow es un par de Racket
+;; (cons), y `vacio` es la lista vacía nativa '(). Esto corresponde
+;; exactamente con la nota semántica del enunciado:
+;;   crear-lista(x, xs) ≡ (x.xs)
+
+;; -----------------------------------------------------------------------
+;; secciones 4.0.1 a 4.0.4 del enunciado
+;; -----------------------------------------------------------------------
+
+(define vacio-mathflow '())
+
+(define crear-lista-mathflow
+  (lambda (elem lst) (cons elem lst)))
+
+(define vacio-mathflow?
+  (lambda (lst) (null? lst)))
+
+(define lista-mathflow?
+  (lambda (x) (or (null? x) (pair? x))))
+
+;; -----------------------------------------------------------------------
+;; secciones 4.0.6 y 4.0.8 del enunciado
+;; -----------------------------------------------------------------------
+
+(define cabeza-mathflow
+  (lambda (lst)
+    (if (vacio-mathflow? lst)
+        (eopl:error 'cabeza "No se puede obtener la cabeza de una lista vacia")
+        (car lst))))
+
+(define cola-mathflow
+  (lambda (lst)
+    (if (vacio-mathflow? lst)
+        (eopl:error 'cola "No se puede obtener la cola de una lista vacia")
+        (cdr lst))))
+
+;;NOTA PARA MANUELAAA!!!!!!
+;; ref-list-mathflow devuelve vacio-mathflow como "no encontrado" cuando el
+;; índice está fuera de rango. unificar esto con el
+;; valor `null` propio de la sección 2.1 cuando esté definido.
+(define ref-list-mathflow
+  (lambda (lst i)
+    (cond
+      ((vacio-mathflow? lst) vacio-mathflow)
+      ((zero? i) (cabeza-mathflow lst))
+      (else
+       (ref-list-mathflow
+        (cola-mathflow lst)
+        (- i 1))))))
+
+
+(define append-mathflow
+  (lambda (lst1 lst2)
+    (if (vacio-mathflow? lst1)
+        lst2
+        (crear-lista-mathflow
+         (cabeza-mathflow lst1)
+         (append-mathflow (cola-mathflow lst1) lst2)))))
+
+(define set-list-mathflow
+  (lambda (lst i valor)
+    (cond
+      ((vacio-mathflow? lst)
+       (eopl:error 'set-list "Indice fuera de rango"))
+      ((zero? i)
+       (crear-lista-mathflow valor (cola-mathflow lst)))
+      (else
+       (crear-lista-mathflow
+        (cabeza-mathflow lst)
+        (set-list-mathflow
+         (cola-mathflow lst)
+         (- i 1)
+         valor))))))
+
+
+(define lista-mathflow->string
+  (lambda (lst)
+    (string-append "[" (lista-elems->string lst) "]")))
+
+(define lista-elems->string
+  (lambda (lst)
+    (cond
+      ((vacio-mathflow? lst) "")
+      ((vacio-mathflow? (cola-mathflow lst)) (valor-mathflow->string (cabeza-mathflow lst)))
+      (else (string-append
+             (valor-mathflow->string (cabeza-mathflow lst))
+             ", "
+             (lista-elems->string (cola-mathflow lst)))))))
+
+(define valor-mathflow->string
+  (lambda (v)
+    (cond
+      ((lista-mathflow? v)
+       (lista-mathflow->string v))
+      ((string? v)
+       v)
+      ((boolean? v)
+       (if v "true" "false"))
+      ((number? v)
+       (number->string v))
+      (else
+       "valor-no-representable"))))
+
+;***********************************************************************************************************************
+;***********************************************************************************************************************
 
 ;***********************************************************************************************************************
 ;*********************************************   Definición tipos     **************************************************
@@ -324,13 +415,21 @@
     (cases expression exp
       (lit-exp (number)
                int-type)
+
       (true-exp ()
                 bool-type)
+
       (false-exp ()
                  bool-type)
+
+      (null-exp ()
+        (eopl:error 'type-of-expression
+                    "El valor null no usa el sistema de tipos heredado"))
+
       (vacio-exp ()
-  (eopl:error 'type-of-expression
-              "El tipo de vacio esta pendiente de definir"))
+        (eopl:error 'type-of-expression
+                    "El valor vacio no usa el sistema de tipos heredado"))
+
       (var-exp (id)
                (apply-tenv tenv id))
       (if-exp (test-exp true-exp false-exp)
@@ -358,7 +457,7 @@
                   (type-of-letrec-exp result-texps proc-names texpss idss bodies
                                       letrec-body tenv)))))
 
-(define check-equal-type!         ;;; NUEVO      
+(define check-equal-type!            
   (lambda (t1 t2 exp)
     (cond
       ((eqv? t1 t2)  )  
@@ -504,36 +603,36 @@
       (menor-prim () (proc-type (list int-type int-type) bool-type))
       (mayor-prim () (proc-type (list int-type int-type) bool-type))
       (crear-lista-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de crear-lista pendiente de implementar"))
+                        (eopl:error 'type-of-primitive
+                                    "La primitiva crear-lista no usa el sistema de tipos heredado"))
 
-(vacioq-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de vacio? pendiente de implementar"))
+      (vacioq-prim ()
+                   (eopl:error 'type-of-primitive
+                               "La primitiva vacio? no usa el sistema de tipos heredado"))
 
-(listaq-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de lista? pendiente de implementar"))
+      (listaq-prim ()
+                   (eopl:error 'type-of-primitive
+                               "La primitiva lista? no usa el sistema de tipos heredado"))
 
-(cabeza-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de cabeza pendiente de implementar"))
+      (cabeza-prim ()
+                   (eopl:error 'type-of-primitive
+                               "La primitiva cabeza no usa el sistema de tipos heredado"))
 
-(cola-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de cola pendiente de implementar"))
+      (cola-prim ()
+                 (eopl:error 'type-of-primitive
+                             "La primitiva cola no usa el sistema de tipos heredado"))
 
-(ref-list-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de ref-list pendiente de implementar"))
+      (ref-list-prim ()
+                     (eopl:error 'type-of-primitive
+                                 "La primitiva ref-list no usa el sistema de tipos heredado"))
 
-(append-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de append pendiente de implementar"))
+      (append-prim ()
+                   (eopl:error 'type-of-primitive
+                               "La primitiva append no usa el sistema de tipos heredado"))
 
-(set-list-prim ()
-  (eopl:error 'type-of-primitive
-              "Tipo de set-list pendiente de implementar"))
+      (set-list-prim ()
+                     (eopl:error 'type-of-primitive
+              "La primitiva set-list no usa el sistema de tipos heredado"))
       )))
 
 (define types-of-expressions
@@ -791,3 +890,13 @@
 just-scan
 scan&parse
 ;(interpretador-tipos)
+;***************************************************  Pruebas punto 4   *****************************************************
+(scan&parse "vacio")
+(scan&parse "crear-lista(3, vacio)")
+(scan&parse "vacio?(vacio)")
+(scan&parse "lista?(crear-lista(1, vacio))")
+(scan&parse "cabeza(crear-lista(1, crear-lista(2, vacio)))")
+(scan&parse "cola(crear-lista(1, crear-lista(2, vacio)))")
+(scan&parse "append(crear-lista(1, vacio), crear-lista(2, vacio))")
+(scan&parse "ref-list(crear-lista(1, crear-lista(2, vacio)), 1)")
+(scan&parse "set-list(crear-lista(1, crear-lista(2, vacio)), 1, 99)")
