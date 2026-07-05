@@ -98,6 +98,18 @@
     (primitive ("cola") cola-prim)
     (primitive ("ref-list") ref-list-prim)
 
+    (primitive ("append") append-prim)
+    (primitive ("set-list") set-list-prim)
+
+    (type-exp ("int") int-type-exp)
+    (type-exp ("bool") bool-type-exp)
+    (type-exp ("(" (separated-list type-exp "*") "->" type-exp ")")
+              proc-type-exp)
+    (optional-type-exp ("?")
+      no-type-exp)
+    (optional-type-exp (type-exp)
+      a-type-exp)
+
     ; características adicionales
     (expression ("false") false-exp)
     (expression ("true") true-exp)
