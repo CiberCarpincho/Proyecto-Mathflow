@@ -889,15 +889,20 @@
 
 (define crear-diccionario-mathflow
   (lambda (args-planos)
-    (list etiqueta-diccionario-mathflow
-          (pares-desde-argumentos-planos args-planos))))
+    (vector
+     etiqueta-diccionario-mathflow
+     (pares-desde-argumentos-planos args-planos))))
 
 (define diccionario-mathflow?
   (lambda (v)
-    (and (pair? v) (eqv? (car v) etiqueta-diccionario-mathflow))))
+    (and (vector? v)
+         (= (vector-length v) 2)
+         (eqv? (vector-ref v 0)
+               etiqueta-diccionario-mathflow))))
 
 (define diccionario-mathflow-pares
-  (lambda (d) (cadr d)))
+  (lambda (d)
+    (vector-ref d 1)))
 
 ;; -----------------------------------------------------------------------
 ;; sección 5.0.3 del enunciado — ref-diccionario(dic, clave)
@@ -928,8 +933,15 @@
 
 (define set-diccionario-mathflow
   (lambda (d clave valor)
-    (list etiqueta-diccionario-mathflow
-          (set-en-pares-mathflow clave valor (diccionario-mathflow-pares d)))))
+    (begin
+      (vector-set!
+       d
+       1
+       (set-en-pares-mathflow
+        clave
+        valor
+        (diccionario-mathflow-pares d)))
+      d)))
 
 ;; -----------------------------------------------------------------------
 ;; secciones 5.0.5 y 5.0.6 del enunciado — claves / valores
@@ -939,11 +951,23 @@
 ;; `map car`/`map cdr` sobre los pares produce directamente una lista con
 ;; la representación correcta, sin necesidad de convertir nada.
 
+(define lista-racket->lista-mathflow
+  (lambda (lst)
+    (if (null? lst)
+        vacio-mathflow
+        (crear-lista-mathflow
+         (car lst)
+         (lista-racket->lista-mathflow (cdr lst))))))
+
 (define claves-diccionario-mathflow
-  (lambda (d) (map car (diccionario-mathflow-pares d))))
+  (lambda (d)
+    (lista-racket->lista-mathflow
+     (map car (diccionario-mathflow-pares d)))))
 
 (define valores-diccionario-mathflow
-  (lambda (d) (map cdr (diccionario-mathflow-pares d))))
+  (lambda (d)
+    (lista-racket->lista-mathflow
+     (map cdr (diccionario-mathflow-pares d)))))
 
 ;; -----------------------------------------------------------------------
 ;; Representación legible para `print` (análoga a lista-mathflow->string)
@@ -1383,7 +1407,15 @@
   (lambda (proc args)
     (cases procval proc
       (closure (ids body env)
-               (eval-expression body (extend-env ids args env))))))
+        (eval-expression
+         body
+         (extend-env
+          ids
+          (map
+           (lambda (arg)
+             (crear-binding-mathflow arg 'var))
+           args)
+          env))))))
 
 ;***********************************************************************************************************************
 ;***********************************************     Ambientes     *****************************************************
