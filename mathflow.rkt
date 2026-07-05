@@ -89,7 +89,15 @@
     (primitive ("sub1") decr-prim)
     (primitive (">") mayor-prim)
     (primitive ("<") menor-prim)
-    
+    ;añadidas:
+    (primitive ("zero?") zero-test-prim)
+    (primitive ("crear-lista") crear-lista-prim)
+    (primitive ("vacio?") vacioq-prim)
+    (primitive ("lista?") listaq-prim)
+    (primitive ("cabeza") cabeza-prim)
+    (primitive ("cola") cola-prim)
+    (primitive ("ref-list") ref-list-prim)
+
     ; características adicionales
     (expression ("false") false-exp)
     (expression ("true") true-exp)
