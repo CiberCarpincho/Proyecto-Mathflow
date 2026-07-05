@@ -76,7 +76,6 @@
   '((program (expression) a-program)
     (expression (number) lit-exp)
     (expression (string) string-exp)
-    (expression (identifier) var-exp)
     (expression
      (primitive "(" (separated-list expression ",")")")
      primapp-exp)
@@ -86,17 +85,39 @@
                 let-exp)
     (expression ( "(" expression (arbno expression) ")")
                 app-exp)
+    
     (expression
-     ("var" identifier "=" expression)
+     ("var" "{" declaraciones "}")
      var-exp-definition)
 
     (expression
-     ("const" identifier "=" expression)
+     ("const" "{" declaraciones "}")
      const-exp-definition)
 
+    (declaraciones
+     (identifier "=" "(" expression ")" declaraciones-tail)
+     declaraciones-exp)
+
+    (declaraciones-tail
+     ()
+     fin-declaraciones)
+
+    (declaraciones-tail
+     ("," declaraciones)
+     mas-declaraciones)
+    
     (expression
-     ("set" identifier "=" expression)
-     assign-exp)
+     (identifier identifier-tail)
+     identifier-exp)
+
+    (identifier-tail
+     ()
+     lectura-id-tail)
+
+    (identifier-tail
+     ("=" expression)
+     asignacion-id-tail)
+    
     (expression
      ("begin" (separated-list expression ";") "end")
      begin-exp)
@@ -196,9 +217,43 @@
                          (sllgen:make-stream-parser
                                   scanner-spec-simple-interpreter 
                                   grammar-simple-interpreter)))
+;; Representacion de declaraciones var y const de MathFlow
 
-;***********************************************************************************************************************
-;***********************************************************************************************************************
+(define crear-binding-mathflow
+  (lambda (valor clase)
+    (list 'binding-mathflow clase valor)))
+
+(define binding-mathflow?
+  (lambda (v)
+    (and (pair? v)
+         (eqv? (car v) 'binding-mathflow))))
+
+(define binding-mathflow-clase
+  (lambda (binding)
+    (cadr binding)))
+
+(define binding-mathflow-valor
+  (lambda (binding)
+    (caddr binding)))
+
+(define actualizar-binding-mathflow
+  (lambda (id nuevo-valor env)
+    (let ((binding (apply-env env id)))
+      (if (binding-mathflow? binding)
+          (if (eqv? (binding-mathflow-clase binding) 'const)
+              (eopl:error 'assign-exp
+                          "No se puede modificar una constante: ~s"
+                          id)
+              (extend-env
+               (list id)
+               (list (crear-binding-mathflow nuevo-valor 'var))
+               env))
+          (eopl:error 'assign-exp
+                      "El identificador no fue declarado con var: ~s"
+                      id)))))
+
+
+
 
 
 ;***********************************************************************************************************************
@@ -215,14 +270,37 @@
   (lambda ()
     (extend-env
      '(x y z f)
-     (list 4 2 5 (closure '(y) (primapp-exp (mult-prim) (cons (var-exp 'y) (cons (primapp-exp (decr-prim) (cons (var-exp 'y) '())) '())))
+     (list 4 2 5 (closure '(y) (primapp-exp (mult-prim) (cons (identifier-exp 'y (lectura-id-tail)) (cons (primapp-exp (decr-prim) (cons (identifier-exp 'y (lectura-id-tail)) '())) '())))
                       (empty-env)))
      (empty-env))))
+
 (define eval-begin
   (lambda (exps env)
     (if (null? exps)
         'null
         (eval-begin-expressions exps env))))
+
+(define eval-declaraciones
+  (lambda (decls clase env)
+    (cases declaraciones decls
+
+      (declaraciones-exp (id value-exp tail)
+        (let ((valor (eval-expression value-exp env)))
+          (let ((nuevo-env
+                 (extend-env
+                  (list id)
+                  (list (crear-binding-mathflow valor clase))
+                  env)))
+            (cases declaraciones-tail tail
+
+              (fin-declaraciones ()
+                nuevo-env)
+
+              (mas-declaraciones (resto-decls)
+                (eval-declaraciones
+                 resto-decls
+                 clase
+                 nuevo-env)))))))))
 
 (define eval-begin-expressions
   (lambda (exps env)
@@ -230,26 +308,42 @@
           (resto (cdr exps)))
       (cases expression exp-actual
 
-        (var-exp-definition (id value-exp)
-          (let ((valor (eval-expression value-exp env)))
+        (var-exp-definition (decls)
+          (let ((nuevo-env
+                 (eval-declaraciones decls 'var env)))
             (if (null? resto)
-                valor
-                (eval-begin-expressions
-                 resto
-                 (extend-env
-                  (list id)
-                  (list valor)
-                  env)))))
-        (const-exp-definition (id value-exp)
-          (let ((valor (eval-expression value-exp env)))
+                'null
+                (eval-begin-expressions resto nuevo-env))))
+        
+        (const-exp-definition (decls)
+          (let ((nuevo-env
+                 (eval-declaraciones decls 'const env)))
             (if (null? resto)
-                valor
-                (eval-begin-expressions
-                 resto
-                 (extend-env
-                  (list id)
-                  (list valor)
-                  env)))))
+                'null
+                (eval-begin-expressions resto nuevo-env))))
+        
+        
+        (identifier-exp (id tail)
+          (cases identifier-tail tail
+
+            (lectura-id-tail ()
+              (let ((valor (eval-expression exp-actual env)))
+                (if (null? resto)
+                    valor
+                    (eval-begin-expressions resto env))))
+
+            (asignacion-id-tail (value-exp)
+              (let ((nuevo-valor (eval-expression value-exp env)))
+                (let ((nuevo-env
+                       (actualizar-binding-mathflow
+                        id
+                        nuevo-valor
+                        env)))
+                  (if (null? resto)
+                      nuevo-valor
+                      (eval-begin-expressions
+                       resto
+                       nuevo-env)))))))
 
         (else
           (let ((valor (eval-expression exp-actual env)))
@@ -263,18 +357,30 @@
       (lit-exp (datum) datum)
       (string-exp (text)
   (substring text 1 (- (string-length text) 1)))
-      (var-exp (id) (apply-env env id))
-      (var-exp-definition (id value-exp)
+      
+      (identifier-exp (id tail)
+        (cases identifier-tail tail
+
+          (lectura-id-tail ()
+            (let ((valor (apply-env env id)))
+              (if (binding-mathflow? valor)
+                  (binding-mathflow-valor valor)
+                  valor)))
+
+          (asignacion-id-tail (value-exp)
+            (eopl:error 'eval-expression
+                        "La asignacion debe evaluarse dentro de begin"))))
+      
+      
+      (var-exp-definition (decl)
                           (eopl:error 'eval-expression
                                       "Semantica de var pendiente de implementar"))
 
-      (const-exp-definition (id value-exp)
+      (const-exp-definition (decl)
                             (eopl:error 'eval-expression
                                         "Semantica de const pendiente de implementar"))
 
-      (assign-exp (id value-exp)
-                  (eopl:error 'eval-expression
-                              "Semantica de asignacion pendiente de implementar"))
+      
       (begin-exp (exps)
                  (eval-begin exps env))
       
@@ -506,19 +612,25 @@
         (eopl:error 'type-of-expression
                     "El valor vacio no usa el sistema de tipos heredado"))
 
-      (var-exp (id)
-               (apply-tenv tenv id))
-      (var-exp-definition (id value-exp)
-                          (eopl:error 'type-of-expression
-                                      "var no usa el sistema de tipos heredado"))
+      (identifier-exp (id tail)
+        (cases identifier-tail tail
 
-      (const-exp-definition (id value-exp)
-                            (eopl:error 'type-of-expression
-                                        "const no usa el sistema de tipos heredado"))
+          (lectura-id-tail ()
+            (apply-tenv tenv id))
 
-      (assign-exp (id value-exp)
-                  (eopl:error 'type-of-expression
-                              "La asignacion no usa el sistema de tipos heredado"))
+          (asignacion-id-tail (value-exp)
+            (eopl:error 'type-of-expression
+                        "La asignacion no usa el sistema de tipos heredado"))))
+      
+      (var-exp-definition (decl)
+        (eopl:error 'type-of-expression
+                    "var no usa el sistema de tipos heredado"))
+
+      (const-exp-definition (decl)
+        (eopl:error 'type-of-expression
+                    "const no usa el sistema de tipos heredado"))
+
+      
       (begin-exp (exps)
                  (eopl:error 'type-of-expression
                              "begin no usa el sistema de tipos heredado"))
