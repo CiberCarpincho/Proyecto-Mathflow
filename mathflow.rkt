@@ -119,12 +119,25 @@
      symbol-exp)
 
     (expression
+     ("evaluar"
+      "("
+      expression
+      ","
+      (separated-list sustitucion ",")
+      ")")
+     evaluar-exp)
+
+    (expression
      ("func" identifier
              "(" (separated-list identifier ",") ")"
              "{"
              (separated-list expression ";")
              "}")
      func-exp)
+
+     (sustitucion
+     (identifier "=" expression)
+     una-sustitucion)
 
     (caso-switch
      ("case" expression ":" expression)
@@ -133,6 +146,7 @@
     (declaraciones
      (identifier "=" "(" expression ")" declaraciones-tail)
      declaraciones-exp)
+
 
     (declaraciones-tail
      ()
@@ -602,6 +616,8 @@
                  (crear-simbolo-mathflow id))
                 env)))))
 
+      
+
       (func-exp (nombre ids body-exps)
         (crear-resultado-eval
          'null
@@ -759,9 +775,15 @@
         (eopl:error 'eval-expression
                     "La declaracion symbol debe evaluarse dentro de begin"))
 
+      (evaluar-exp (expr sustituciones)
+        (evaluar-expresion-mathflow
+         (eval-expression expr env)
+         sustituciones
+         env))
+
       (func-exp (nombre ids body-exps)
         (eopl:error 'eval-expression
-                    "La definicion func debe evaluarse dentro de begin"))
+              "La definicion func debe evaluarse dentro de begin"))
 
       
       (let-exp (ids rands body)
@@ -777,6 +799,7 @@
                      (apply-procedure proc args)
                      (eopl:error 'eval-expression
                                  "Attempt to apply non-procedure ~s" proc))))
+      
       (letrec-exp (result-texps proc-names arg-texpss idss bodies letrec-body)
                   (eval-expression letrec-body
                                    (extend-env-recursively proc-names idss bodies env)))
@@ -823,6 +846,66 @@
            derecha))
 
         expr)))
+
+(define evaluar-expresion-mathflow
+  (lambda (expr sustituciones env)
+    (let ((tabla
+           (evaluar-sustituciones sustituciones env)))
+      (simplificar-mathflow
+       (sustituir-en-expresion expr tabla)))))
+
+(define evaluar-sustituciones
+  (lambda (sustituciones env)
+    (if (null? sustituciones)
+        '()
+        (cases sustitucion (car sustituciones)
+          (una-sustitucion (id value-exp)
+            (cons
+             (cons id
+                   (eval-expression value-exp env))
+             (evaluar-sustituciones
+              (cdr sustituciones)
+              env)))))))
+
+(define buscar-sustitucion
+  (lambda (id tabla)
+    (cond
+      ((null? tabla)
+       #f)
+
+      ((eqv? id (caar tabla))
+       (list 'encontrado (cdar tabla)))
+
+      (else
+       (buscar-sustitucion id (cdr tabla))))))
+
+(define sustituir-en-expresion
+  (lambda (expr tabla)
+    (cond
+
+      ((simbolo-mathflow? expr)
+       (let ((resultado
+              (buscar-sustitucion
+               (simbolo-mathflow-id expr)
+               tabla)))
+         (if resultado
+             (cadr resultado)
+             expr)))
+
+      ((expresion-simbolica? expr)
+       (crear-expresion-simbolica
+        (expresion-simbolica-operador expr)
+
+        (sustituir-en-expresion
+         (expresion-simbolica-izquierda expr)
+         tabla)
+
+        (sustituir-en-expresion
+         (expresion-simbolica-derecha expr)
+         tabla)))
+
+      (else
+       expr))))
 
 (define simplificar-operacion
   (lambda (operador izquierda derecha)
@@ -1464,6 +1547,10 @@
       (symbol-exp (id)
         (eopl:error 'type-of-expression
                     "symbol no usa el sistema de tipos heredado"))
+
+      (evaluar-exp (expr sustituciones)
+        (eopl:error 'type-of-expression
+              "evaluar no usa el sistema de tipos heredado"))
 
       (func-exp (nombre ids body-exps)
         (eopl:error 'type-of-expression
