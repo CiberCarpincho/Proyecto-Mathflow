@@ -115,6 +115,10 @@
      return-exp)
 
     (expression
+     ("symbol" identifier)
+     symbol-exp)
+
+    (expression
      ("func" identifier
              "(" (separated-list identifier ",") ")"
              "{"
@@ -283,6 +287,20 @@
     (and (pair? v)
          (eqv? (car v) 'binding-mathflow))))
 
+(define crear-simbolo-mathflow
+  (lambda (id)
+    (list 'simbolo-mathflow id)))
+
+(define simbolo-mathflow?
+  (lambda (v)
+    (and (pair? v)
+         (eqv? (car v) 'simbolo-mathflow))))
+
+(define simbolo-mathflow-id
+  (lambda (v)
+    (cadr v)))
+
+
 (define binding-mathflow-clase
   (lambda (binding)
     (cadr binding)))
@@ -352,22 +370,43 @@
     (cases declaraciones decls
 
       (declaraciones-exp (id value-exp tail)
-        (let ((valor (eval-expression value-exp env)))
-          (let ((nuevo-env
-                 (extend-env
-                  (list id)
-                  (list (crear-binding-mathflow valor clase))
-                  env)))
-            (cases declaraciones-tail tail
 
-              (fin-declaraciones ()
-                nuevo-env)
+        (let ((binding-existente
+               (buscar-binding-opcional env id)))
 
-              (mas-declaraciones (resto-decls)
-                (eval-declaraciones
-                 resto-decls
-                 clase
-                 nuevo-env)))))))))
+         
+          (if (and binding-existente
+                   (simbolo-mathflow?
+                    (cadr binding-existente)))
+
+              (eopl:error
+               'eval-declaraciones
+               "El identificador ~s ya fue declarado como simbolo algebraico"
+               id)
+
+              (let ((valor
+                     (eval-expression value-exp env)))
+
+                (let ((nuevo-env
+                       (extend-env
+                        (list id)
+                        (list
+                         (crear-binding-mathflow
+                          valor
+                          clase))
+                        env)))
+
+                  (cases declaraciones-tail tail
+
+                    (fin-declaraciones ()
+                      nuevo-env)
+
+                    (mas-declaraciones
+                     (resto-decls)
+                     (eval-declaraciones
+                      resto-decls
+                      clase
+                      nuevo-env)))))))))))
 
 (define eval-begin-expressions
   (lambda (exps env)
@@ -491,6 +530,27 @@
 
       (const-exp-definition (decls)
         (crear-resultado-eval 'null (eval-declaraciones decls 'const env)))
+
+      (symbol-exp (id)
+        (let ((binding-existente
+         (buscar-binding-opcional env id)))
+
+          (if (and binding-existente
+             (binding-mathflow?
+              (cadr binding-existente)))
+
+              (eopl:error
+               'symbol-exp
+               "El identificador ~s ya fue declarado como variable o constante"
+               id)
+
+              (crear-resultado-eval
+               'null
+               (extend-env
+                (list id)
+                (list
+                 (crear-simbolo-mathflow id))
+                env)))))
 
       (func-exp (nombre ids body-exps)
         (crear-resultado-eval
@@ -644,9 +704,15 @@
         (valor-return
          (eval-expression value-exp env)))
 
+
+      (symbol-exp (id)
+        (eopl:error 'eval-expression
+                    "La declaracion symbol debe evaluarse dentro de begin"))
+
       (func-exp (nombre ids body-exps)
         (eopl:error 'eval-expression
-              "La definicion func debe evaluarse dentro de begin"))
+                    "La definicion func debe evaluarse dentro de begin"))
+
       
       (let-exp (ids rands body)
                (let ((args (eval-rands rands env)))
@@ -1137,9 +1203,15 @@
       (return-exp (value-exp)
         (eopl:error 'type-of-expression
               "return no usa el sistema de tipos heredado"))
+
+      (symbol-exp (id)
+        (eopl:error 'type-of-expression
+                    "symbol no usa el sistema de tipos heredado"))
+
       (func-exp (nombre ids body-exps)
         (eopl:error 'type-of-expression
-              "func no usa el sistema de tipos heredado"))
+                    "func no usa el sistema de tipos heredado"))
+      
       (proc-exp (texps ids body)
                 (type-of-proc-exp texps ids body tenv))
       (primapp-exp (prim rands)
@@ -1513,6 +1585,32 @@
                                                       (list-ref bodies pos)
                                                       env)
                                              (apply-env old-env sym)))))))
+(define buscar-binding-opcional
+  (lambda (env sym)
+    (cases environment env
+
+      (empty-env-record ()
+        #f)
+
+      (extended-env-record (syms vals old-env)
+        (let ((pos (list-find-position sym syms)))
+          (if (number? pos)
+              (list 'encontrado (list-ref vals pos))
+              (buscar-binding-opcional old-env sym))))
+
+      (recursively-extended-env-record
+       (proc-names idss bodies old-env)
+       (let ((pos
+              (list-find-position sym proc-names)))
+         (if (number? pos)
+             (list 'encontrado
+                   (closure
+                    (list-ref idss pos)
+                    (list-ref bodies pos)
+                    env))
+             (buscar-binding-opcional
+              old-env
+              sym)))))))
 
 ;***********************************************************************************************************************
 ;********************************************  Ambientes de tipos  *****************************************************
