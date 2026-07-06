@@ -291,6 +291,7 @@
   (lambda (id)
     (list 'simbolo-mathflow id)))
 
+
 (define simbolo-mathflow?
   (lambda (v)
     (and (pair? v)
@@ -300,6 +301,54 @@
   (lambda (v)
     (cadr v)))
 
+(define crear-expresion-simbolica
+  (lambda (operador izquierda derecha)
+    (list 'expresion-simbolica
+          operador
+          izquierda
+          derecha)))
+
+(define expresion-simbolica?
+  (lambda (v)
+    (and (pair? v)
+         (eqv? (car v) 'expresion-simbolica))))
+
+(define expresion-simbolica-operador
+  (lambda (v)
+    (cadr v)))
+
+(define expresion-simbolica-izquierda
+  (lambda (v)
+    (caddr v)))
+
+(define expresion-simbolica-derecha
+  (lambda (v)
+    (cadddr v)))
+
+(define valor-simbolico?
+  (lambda (v)
+    (or (simbolo-mathflow? v)
+        (expresion-simbolica? v))))
+
+(define verificar-no-simbolicos
+  (lambda (operador args)
+    (if (or (valor-simbolico? (car args))
+            (valor-simbolico? (cadr args)))
+        (eopl:error
+         'operacion-simbolica
+         "El operador ~s no puede aplicarse a simbolos o expresiones simbolicas"
+         operador)
+        #t)))
+
+(define aplicar-operacion-aritmetica
+  (lambda (operador operacion izquierda derecha)
+    (if (or (valor-simbolico? izquierda)
+            (valor-simbolico? derecha))
+        (crear-expresion-simbolica
+         operador
+         izquierda
+         derecha)
+        (operacion izquierda derecha))))
 
 (define binding-mathflow-clase
   (lambda (binding)
@@ -754,40 +803,87 @@
 (define apply-primitive
   (lambda (prim args)
     (cases primitive prim
-      (add-prim () (+ (car args) (cadr args)))
-      (substract-prim () (- (car args) (cadr args)))
-      (mult-prim () (* (car args) (cadr args)))
+      (add-prim ()
+        (aplicar-operacion-aritmetica
+         '+
+         +
+         (car args)
+         (cadr args)))
+
+      (substract-prim ()
+        (aplicar-operacion-aritmetica
+         '-
+         -
+         (car args)
+         (cadr args)))
+
+      (mult-prim ()
+        (aplicar-operacion-aritmetica
+         '*
+         *
+         (car args)
+         (cadr args)))
+
       (division-prim ()
-        (/ (car args) (cadr args)))
+        (aplicar-operacion-aritmetica
+         '/
+         /
+         (car args)
+         (cadr args)))
+      
       (modulo-prim ()
         (remainder (car args) (cadr args)))
       (incr-prim () (+ (car args) 1))
       (decr-prim () (- (car args) 1))
       (zero-test-prim () (zero? (car args)))
-      (menor-prim () (< (car args) (cadr args)))
-      (mayor-prim () (> (car args) (cadr args)))
+      (menor-prim ()
+        (begin
+          (verificar-no-simbolicos '< args)
+          (< (car args) (cadr args))))
+
+      (mayor-prim ()
+        (begin
+          (verificar-no-simbolicos '> args)
+          (> (car args) (cadr args))))
+
       (mayor-igual-prim ()
-        (>= (car args) (cadr args)))
+        (begin
+          (verificar-no-simbolicos '>= args)
+          (>= (car args) (cadr args))))
 
       (menor-igual-prim ()
-        (<= (car args) (cadr args)))
+        (begin
+          (verificar-no-simbolicos '<= args)
+          (<= (car args) (cadr args))))
 
       (igual-prim ()
-        (equal? (car args) (cadr args)))
+        (begin
+          (verificar-no-simbolicos '== args)
+          (equal? (car args) (cadr args))))
 
       (diferente-prim ()
-        (not (equal? (car args) (cadr args))))
+        (begin
+          (verificar-no-simbolicos '<> args)
+          (not (equal? (car args) (cadr args)))))
       
       (and-prim ()
-        (and (true-value? (car args))
-             (true-value? (cadr args))))
+        (begin
+          (verificar-no-simbolicos 'and args)
+          (and (true-value? (car args))
+               (true-value? (cadr args)))))
 
       (or-prim ()
-        (or (true-value? (car args))
-            (true-value? (cadr args))))
+        (begin
+          (verificar-no-simbolicos 'or args)
+          (or (true-value? (car args))
+              (true-value? (cadr args)))))
 
       (not-prim ()
-        (not (true-value? (car args))))
+        (if (valor-simbolico? (car args))
+            (eopl:error
+             'operacion-simbolica
+             "El operador not no puede aplicarse a simbolos o expresiones simbolicas")
+            (not (true-value? (car args)))))
 
       (longitud-prim ()
         (string-length (car args)))
@@ -958,6 +1054,12 @@
        "null")
       ((diccionario-mathflow? v)
        (diccionario-mathflow->string v))
+      ((simbolo-mathflow? v)
+       (symbol->string
+        (simbolo-mathflow-id v)))
+
+      ((expresion-simbolica? v)
+       (expresion-simbolica->string v))
       ((lista-mathflow? v)
        (lista-mathflow->string v))
       ((string? v)
@@ -968,6 +1070,19 @@
        (number->string v))
       (else
        "valor-no-representable"))))
+(define expresion-simbolica->string
+  (lambda (expr)
+    (string-append
+     "("
+     (valor-mathflow->string
+      (expresion-simbolica-izquierda expr))
+     " "
+     (symbol->string
+      (expresion-simbolica-operador expr))
+     " "
+     (valor-mathflow->string
+      (expresion-simbolica-derecha expr))
+     ")")))
 
 ;***********************************************************************************************************************
 ;*****************************************  Punto 5 — Adendo Diccionarios  **********************************************
