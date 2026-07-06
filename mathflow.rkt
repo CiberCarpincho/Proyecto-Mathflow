@@ -188,6 +188,7 @@
     (primitive ("longitud") longitud-prim)
     (primitive ("concatenar") concatenar-prim)
     (primitive ("print") print-prim)
+    (primitive ("simplificar") simplificar-prim)
 
     (primitive ("append") append-prim)
     (primitive ("set-list") set-list-prim)
@@ -800,6 +801,145 @@
   (lambda (rand env)
     (eval-expression rand env)))
 
+
+(define simplificar-mathflow
+  (lambda (expr)
+    (if (expresion-simbolica? expr)
+
+        (let* ((operador
+                (expresion-simbolica-operador expr))
+
+               (izquierda
+                (simplificar-mathflow
+                 (expresion-simbolica-izquierda expr)))
+
+               (derecha
+                (simplificar-mathflow
+                 (expresion-simbolica-derecha expr))))
+
+          (simplificar-operacion
+           operador
+           izquierda
+           derecha))
+
+        expr)))
+
+(define simplificar-operacion
+  (lambda (operador izquierda derecha)
+    (cond
+
+      ((and (number? izquierda)
+            (number? derecha))
+       (cond
+         ((eqv? operador '+)
+          (+ izquierda derecha))
+
+         ((eqv? operador '-)
+          (- izquierda derecha))
+
+         ((eqv? operador '*)
+          (* izquierda derecha))
+
+         ((eqv? operador '/)
+          (/ izquierda derecha))
+
+         (else
+          (crear-expresion-simbolica
+           operador izquierda derecha))))
+      
+      ((and (eqv? operador '+)
+            (expresion-simbolica? izquierda)
+            (eqv? (expresion-simbolica-operador izquierda) '+)
+            (number? (expresion-simbolica-derecha izquierda))
+            (number? derecha))
+       (crear-expresion-simbolica
+        '+
+        (expresion-simbolica-izquierda izquierda)
+        (+ (expresion-simbolica-derecha izquierda)
+           derecha)))
+
+      ((and (eqv? operador '+)
+            (number? izquierda)
+            (expresion-simbolica? derecha)
+            (eqv? (expresion-simbolica-operador derecha) '+)
+            (number? (expresion-simbolica-derecha derecha)))
+       (crear-expresion-simbolica
+        '+
+        (+ izquierda
+           (expresion-simbolica-derecha derecha))
+        (expresion-simbolica-izquierda derecha)))
+
+      ((and (eqv? operador '*)
+            (expresion-simbolica? izquierda)
+            (eqv? (expresion-simbolica-operador izquierda) '*)
+            (number? (expresion-simbolica-derecha izquierda))
+            (number? derecha))
+       (crear-expresion-simbolica
+        '*
+        (expresion-simbolica-izquierda izquierda)
+        (* (expresion-simbolica-derecha izquierda)
+           derecha)))
+
+      ((and (eqv? operador '*)
+            (number? izquierda)
+            (expresion-simbolica? derecha)
+            (eqv? (expresion-simbolica-operador derecha) '*)
+            (number? (expresion-simbolica-derecha derecha)))
+       (crear-expresion-simbolica
+        '*
+        (* izquierda
+           (expresion-simbolica-derecha derecha))
+        (expresion-simbolica-izquierda derecha)))
+
+      ((and (eqv? operador '+)
+            (number? derecha)
+            (zero? derecha))
+       izquierda)
+
+      ((and (eqv? operador '+)
+            (number? izquierda)
+            (zero? izquierda))
+       derecha)
+
+      ((and (eqv? operador '-)
+            (number? derecha)
+            (zero? derecha))
+       izquierda)
+
+      ((and (eqv? operador '*)
+            (number? derecha)
+            (zero? derecha))
+       0)
+
+      ((and (eqv? operador '*)
+            (number? izquierda)
+            (zero? izquierda))
+       0)
+
+      ((and (eqv? operador '*)
+            (number? derecha)
+            (= derecha 1))
+       izquierda)
+
+      ((and (eqv? operador '*)
+            (number? izquierda)
+            (= izquierda 1))
+       derecha)
+
+      ((and (eqv? operador '/)
+            (number? derecha)
+            (= derecha 1))
+       izquierda)
+
+      ((and (eqv? operador '/)
+            (number? izquierda)
+            (zero? izquierda))
+       0)
+
+      (else
+       (crear-expresion-simbolica
+        operador izquierda derecha)))))
+
 (define apply-primitive
   (lambda (prim args)
     (cases primitive prim
@@ -903,6 +1043,8 @@
           (display (valor-mathflow->string (car args)))
           (newline)
           'null))
+      (simplificar-prim ()
+        (simplificar-mathflow (car args)))
 
       (crear-lista-prim () (crear-lista-mathflow (car args) (cadr args)))
       (vacioq-prim () (vacio-mathflow? (car args)))
@@ -1528,10 +1670,15 @@
       (print-prim ()
         (eopl:error 'type-of-primitive
               "La primitiva print no usa el sistema de tipos heredado"))
-      
+
+      (simplificar-prim ()
+        (eopl:error 'type-of-primitive
+              "La primitiva simplificar no usa el sistema de tipos heredado"))
+
       (crear-lista-prim ()
-                        (eopl:error 'type-of-primitive
-                                    "La primitiva crear-lista no usa el sistema de tipos heredado"))
+        (eopl:error 'type-of-primitive
+              "La primitiva crear-lista no usa el sistema de tipos heredado"))
+      
 
       (vacioq-prim ()
                    (eopl:error 'type-of-primitive
